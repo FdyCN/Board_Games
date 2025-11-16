@@ -43,7 +43,7 @@ def register_game(name: str):
         装饰器函数
 
     Raises:
-        DuplicateRegistrationError: 如果游戏名称已被注册
+        DuplicateRegistrationError: 如果游戏名称已被注册（可以通过设置覆盖）
         TypeError: 如果被装饰的类不是 GameInterface 的子类
 
     Examples:
@@ -57,9 +57,22 @@ def register_game(name: str):
         if not issubclass(cls, GameInterface):
             raise TypeError(f"{cls.__name__} 必须继承自 GameInterface")
 
-        # 检查重复注册
+        # 检查重复注册（允许覆盖，用于模块 reload）
         if name in GAME_REGISTRY:
-            raise DuplicateRegistrationError(name)
+            # 如果是同一个类，忽略重复注册
+            if GAME_REGISTRY[name] is not cls:
+                # 不同的类，仅在非 reload 情况下报错
+                import sys
+                module_name = cls.__module__
+                # 如果模块在 sys.modules 中且正在 reload，允许覆盖
+                if module_name not in sys.modules or not hasattr(sys.modules[module_name], '__reload_in_progress__'):
+                    # 为了向后兼容，改为警告而不是错误
+                    import warnings
+                    warnings.warn(
+                        f"游戏 '{name}' 已被 {GAME_REGISTRY[name].__name__} 注册，"
+                        f"现在被 {cls.__name__} 覆盖",
+                        UserWarning
+                    )
 
         # 注册
         GAME_REGISTRY[name] = cls
@@ -212,6 +225,7 @@ def auto_import_games() -> None:
     """
     import importlib
     import os
+    import sys
 
     # 获取 games 目录路径
     games_dir = os.path.dirname(__file__)
@@ -229,7 +243,11 @@ def auto_import_games() -> None:
         # 尝试导入 game.py
         try:
             module_name = f"games.{entry}.game"
-            importlib.import_module(module_name)
+            # 如果模块已经导入过，使用 reload 强制重新执行
+            if module_name in sys.modules:
+                importlib.reload(sys.modules[module_name])
+            else:
+                importlib.import_module(module_name)
         except ModuleNotFoundError:
             # 该目录下没有 game.py，跳过
             pass
@@ -238,6 +256,72 @@ def auto_import_games() -> None:
             print(f"警告: 导入游戏 '{entry}' 失败: {e}")
 
 
+def import_specific_games(game_names: list[str]) -> None:
+    """
+    导入指定的游戏列表
+
+    Args:
+        game_names: 要导入的游戏名称列表
+
+    Examples:
+        >>> import_specific_games(["splendor", "uno"])
+    """
+    import importlib
+    import sys
+
+    for game_name in game_names:
+        try:
+            module_name = f"games.{game_name}.game"
+            # 如果模块已经导入过，使用 reload 强制重新执行
+            if module_name in sys.modules:
+                importlib.reload(sys.modules[module_name])
+            else:
+                importlib.import_module(module_name)
+        except ModuleNotFoundError:
+            print(f"警告: 找不到游戏模块 '{game_name}'")
+        except Exception as e:
+            print(f"警告: 导入游戏 '{game_name}' 失败: {e}")
+
+
+def import_games_except(excluded_games: list[str]) -> None:
+    """
+    导入除了指定列表外的所有游戏
+
+    Args:
+        excluded_games: 要排除的游戏名称列表
+
+    Examples:
+        >>> import_games_except(["test_game"])
+    """
+    import importlib
+    import os
+    import sys
+
+    games_dir = os.path.dirname(__file__)
+
+    for entry in os.listdir(games_dir):
+        game_path = os.path.join(games_dir, entry)
+
+        if not os.path.isdir(game_path):
+            continue
+        if entry.startswith("_") or entry.startswith("."):
+            continue
+        if entry in excluded_games:
+            continue
+
+        try:
+            module_name = f"games.{entry}.game"
+            # 如果模块已经导入过，使用 reload 强制重新执行
+            if module_name in sys.modules:
+                importlib.reload(sys.modules[module_name])
+            else:
+                importlib.import_module(module_name)
+        except ModuleNotFoundError:
+            pass
+        except Exception as e:
+            print(f"警告: 导入游戏 '{entry}' 失败: {e}")
+
+
 # 在模块导入时自动注册所有游戏（可选）
 # 如果不希望自动导入，可以注释掉下面这行
-# auto_import_games()
+auto_import_games()

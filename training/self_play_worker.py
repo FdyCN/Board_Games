@@ -69,7 +69,8 @@ def collect_episode(
 
         if not legal_actions:
             if verbose:
-                print(f"步数 {step_count}: 玩家 {current_player} 没有合法动作")
+                print(f"步数 {step_count}: 玩家 {current_player} 没有合法动作，游戏结束")
+            done = True
             break
 
         # 转换为索引
@@ -113,7 +114,17 @@ def collect_episode(
 
     # 获取最终奖励
     final_rewards = game.get_final_rewards(state)
-    winner = game.get_winner(state)
+
+    # 获取获胜者（仅在终局状态）
+    if game.is_terminal(state):
+        winner = game.get_winner(state)
+    else:
+        # 游戏未正常结束，使用 final_rewards 确定获胜者
+        if verbose:
+            print("警告: 游戏未达到终局状态，使用当前分数确定获胜者")
+        max_reward = max(final_rewards)
+        winners = [i for i, r in enumerate(final_rewards) if r == max_reward]
+        winner = winners[0] if len(winners) == 1 else -1  # 平局返回 -1
 
     elapsed_time = time.time() - start_time
 

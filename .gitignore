@@ -52,7 +52,11 @@ dmypy.json
 .ipynb_checkpoints
 *.ipynb
 
+# Temp docs
+docs/*
+
 # Data and Logs
+data/checkpoints/*
 data/checkpoints/*.pth
 data/checkpoints/*.pt
 data/logs/*.log

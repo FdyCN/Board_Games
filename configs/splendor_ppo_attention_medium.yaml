@@ -1,0 +1,57 @@
+# Splendor PPO Training Configuration
+# 用于训练 Splendor 游戏的 PPO 智能体
+
+# 游戏配置
+game:
+  name: "splendor"
+  num_players: 4
+  seed: null  # null 表示随机
+
+# 模型配置
+model:
+  encoder_type: "attention"  # 选项: "mlp", "attention"
+  config: "medium"  # 选项: "small", "medium", "large"
+  # 或者自定义配置:
+  # hidden_dim: 256
+  # intermediate_dim: 320
+  # num_attention_heads: 4
+  # dropout: 0.0
+
+# PPO 算法配置
+algorithm:
+  name: "ppo"
+  learning_rate: 0.0003  # 3e-4
+  gamma: 0.99  # 折扣因子
+  gae_lambda: 0.95  # GAE 参数
+  clip_epsilon: 0.2  # PPO clip 参数
+  value_coef: 0.5  # 价值损失系数
+  entropy_coef: 0.01  # 熵正则化系数
+  max_grad_norm: 0.5  # 梯度裁剪阈值
+
+# 训练配置
+training:
+  num_iterations: 1000  # 总迭代次数
+  episodes_per_iteration: 50  # 每次迭代收集的 episode 数
+  update_epochs: 4  # PPO 更新轮数
+  minibatch_size: 256  # 小批次大小
+  device: "cpu"  # 设备: "cpu", "cuda", "mps"
+
+  # Checkpoint 配置
+  checkpoint_dir: "data/checkpoints/splendor_ppo"
+  checkpoint_interval: 10  # 每 N 次迭代保存检查点
+
+  # 日志配置
+  log_interval: 1  # 每 N 次迭代打印日志
+  verbose: true
+
+# 评估配置
+evaluation:
+  eval_interval: 50  # 每 N 次迭代评估一次
+  eval_episodes: 100  # 评估时运行的 episode 数
+  deterministic: true  # 评估时是否使用确定性策略
+
+# 实验配置
+experiment:
+  name: "splendor_ppo_baseline"
+  tags: ["splendor", "ppo", "baseline"]
+  notes: "Baseline PPO training for Splendor with 4 players"

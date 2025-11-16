@@ -78,24 +78,31 @@ class NeuralAgent(AgentInterface):
         # 创建合法动作掩码
         legal_mask = self._create_legal_mask(legal_actions, self.model.action_size)
 
-        # 使用模型选择动作
+        # 使用模型进行一次前向传播（获取所有需要的信息）
         with torch.no_grad():
-            action_tensor, log_prob_tensor, value_tensor = self.model.get_action_and_value(
-                obs_tensor, legal_mask, deterministic=deterministic
-            )
+            # 获取 logits 和 value
+            logits, value_tensor = self.model(obs_tensor, legal_mask)
 
-        # 转换为 numpy
-        action_idx = int(action_tensor.item())
-        log_prob = float(log_prob_tensor.item())
-        value = float(value_tensor.item())
-
-        # 获取完整策略分布（用于分析和熵计算）
-        with torch.no_grad():
-            logits, _ = self.model(obs_tensor, legal_mask)
+            # 计算概率分布
             probs = torch.softmax(logits, dim=-1)
-            policy = probs.cpu().numpy().flatten()
 
-        # 计算熵
+            # 选择动作
+            if deterministic:
+                action_tensor = torch.argmax(probs, dim=-1)
+            else:
+                action_tensor = torch.multinomial(probs, num_samples=1).squeeze(-1)
+
+            # 计算 log_prob
+            log_prob_tensor = torch.log(probs.gather(-1, action_tensor.unsqueeze(-1)) + 1e-10).squeeze(-1)
+
+        # 只在最后一次性转换为 CPU（减少同步次数）
+        # 使用 .cpu() 批量转换，然后再调用 .numpy()
+        action_idx = int(action_tensor.cpu().item())
+        log_prob = float(log_prob_tensor.cpu().item())
+        value = float(value_tensor.cpu().item())
+        policy = probs.cpu().numpy().flatten()
+
+        # 计算熵（在 CPU 上计算更快）
         entropy = compute_entropy(policy)
 
         # 验证动作合法性
