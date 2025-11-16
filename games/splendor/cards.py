@@ -56,11 +56,11 @@ class DevelopmentCard:
         return sum(self.cost)
 
     def __str__(self) -> str:
-        from games.splendor.constants import GEM_SYMBOLS
+        from games.splendor.constants import GEM_COLORED_SYMBOLS
 
-        bonus_sym = GEM_SYMBOLS[self.bonus_color]
+        bonus_sym = GEM_COLORED_SYMBOLS[self.bonus_color]
         cost_str = ", ".join(
-            [f"{c}{GEM_SYMBOLS[GemColor(i)]}" for i, c in enumerate(self.cost) if c > 0]
+            [f"{c}{GEM_COLORED_SYMBOLS[GemColor(i)]}" for i, c in enumerate(self.cost) if c > 0]
         )
         return f"[T{self.tier} {bonus_sym} {self.points}pt] Cost: {cost_str}"
 
@@ -95,10 +95,10 @@ class NobleTile:
         return self.requirements[color]
 
     def __str__(self) -> str:
-        from games.splendor.constants import GEM_SYMBOLS
+        from games.splendor.constants import GEM_COLORED_SYMBOLS
 
         req_str = ", ".join(
-            [f"{r}{GEM_SYMBOLS[GemColor(i)]}" for i, r in enumerate(self.requirements) if r > 0]
+            [f"{r}{GEM_COLORED_SYMBOLS[GemColor(i)]}" for i, r in enumerate(self.requirements) if r > 0]
         )
         return f"[{self.name}] Requires: {req_str}"
 

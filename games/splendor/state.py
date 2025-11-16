@@ -66,14 +66,21 @@ class PlayerState:
     def can_afford(self, card: DevelopmentCard) -> bool:
         """检查是否能购买卡牌"""
         bonuses = self.get_total_bonuses()
-        total_gems = self.total_gems()
+        gold_needed = 0
 
         for color in range(NUM_GEM_COLORS):
-            needed = max(0, card.cost[color] - bonuses[color])
-            if needed > self.gems[color] + self.gems[GemColor.GOLD]:
-                return False
+            cost = card.cost[color]
+            bonus = bonuses[color]
+            needed = max(0, cost - bonus)
 
-        return True
+            # 优先使用对应颜色的宝石
+            available_from_color = self.gems[color]
+            if needed > available_from_color:
+                # 不足的部分需要金宝石
+                gold_needed += needed - available_from_color
+
+        # 检查金宝石是否足够
+        return gold_needed <= self.gems[GemColor.GOLD]
 
 
 @dataclass

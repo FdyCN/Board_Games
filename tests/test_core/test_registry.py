@@ -89,9 +89,9 @@ class SimpleTestGame(GameInterface):
 # ===== 测试 Fixture =====
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def clean_registry():
-    """每个测试前清空注册表"""
+    """清空注册表的 fixture（仅用于 registry 测试）"""
     clear_registry()
     yield
     clear_registry()
@@ -100,7 +100,7 @@ def clean_registry():
 # ===== 测试用例 =====
 
 
-def test_register_game():
+def test_register_game(clean_registry):
     """测试游戏注册"""
 
     @register_game("test_game")
@@ -111,7 +111,7 @@ def test_register_game():
     assert GAME_REGISTRY["test_game"] == TestGame
 
 
-def test_register_game_duplicate():
+def test_register_game_duplicate(clean_registry):
     """测试重复注册抛出异常"""
 
     @register_game("test_game")
@@ -125,7 +125,7 @@ def test_register_game_duplicate():
             pass
 
 
-def test_register_non_game_interface():
+def test_register_non_game_interface(clean_registry):
     """测试注册非 GameInterface 子类抛出异常"""
 
     with pytest.raises(TypeError):
@@ -135,7 +135,7 @@ def test_register_non_game_interface():
             pass
 
 
-def test_create_game():
+def test_create_game(clean_registry):
     """测试创建游戏实例"""
 
     @register_game("test_game")
@@ -147,7 +147,7 @@ def test_create_game():
     assert game.num_players == 4
 
 
-def test_create_game_not_found():
+def test_create_game_not_found(clean_registry):
     """测试创建未注册游戏抛出异常"""
     with pytest.raises(GameNotFoundError) as exc_info:
         create_game("nonexistent_game")
@@ -155,7 +155,7 @@ def test_create_game_not_found():
     assert "nonexistent_game" in str(exc_info.value)
 
 
-def test_list_games():
+def test_list_games(clean_registry):
     """测试列出所有游戏"""
 
     @register_game("game1")
@@ -170,7 +170,7 @@ def test_list_games():
     assert games == ["game1", "game2"]  # 应该是排序的
 
 
-def test_get_game_class():
+def test_get_game_class(clean_registry):
     """测试获取游戏类"""
 
     @register_game("test_game")
@@ -181,7 +181,7 @@ def test_get_game_class():
     assert game_class == TestGame
 
 
-def test_is_registered():
+def test_is_registered(clean_registry):
     """测试检查游戏是否注册"""
 
     @register_game("test_game")
@@ -192,7 +192,7 @@ def test_is_registered():
     assert not is_registered("nonexistent")
 
 
-def test_unregister_game():
+def test_unregister_game(clean_registry):
     """测试取消注册"""
 
     @register_game("test_game")
@@ -205,7 +205,7 @@ def test_unregister_game():
     assert not is_registered("test_game")
 
 
-def test_clear_registry():
+def test_clear_registry(clean_registry):
     """测试清空注册表"""
 
     @register_game("game1")

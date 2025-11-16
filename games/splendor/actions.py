@@ -10,11 +10,10 @@ from typing import ClassVar
 from games.splendor.constants import ActionType, CardTier, GemColor
 
 
-@dataclass(frozen=True)
 class SplendorAction:
     """动作基类"""
 
-    action_type: ActionType
+    action_type: ActionType | None = None
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}"
@@ -31,6 +30,7 @@ class TakeGemsAction(SplendorAction):
     """
 
     gems: tuple[int, int, int, int, int]  # [R, G, B, W, Bl]
+    action_type: ActionType | None = None
 
     def __post_init__(self):
         """验证动作有效性"""
@@ -44,6 +44,12 @@ class TakeGemsAction(SplendorAction):
         elif non_zero_colors == 1 and total_gems == 2:
             # 拿 2 个相同颜色
             object.__setattr__(self, "action_type", ActionType.TAKE_2_SAME)
+        elif non_zero_colors == 2 and total_gems == 2:
+            # 拿 2 个不同颜色（银行资源不足时）
+            object.__setattr__(self, "action_type", ActionType.TAKE_3_DIFFERENT)
+        elif non_zero_colors == 1 and total_gems == 1:
+            # 拿 1 个宝石（银行资源极度不足时）
+            object.__setattr__(self, "action_type", ActionType.TAKE_3_DIFFERENT)
         else:
             raise ValueError(f"Invalid gems combination: {self.gems}")
 
@@ -62,9 +68,11 @@ class TakeGemsAction(SplendorAction):
         return self.gems[color]
 
     def __str__(self) -> str:
-        from games.splendor.constants import GEM_SYMBOLS
+        from games.splendor.constants import GEM_COLORED_SYMBOLS
 
-        gems_str = ", ".join([f"{g}{GEM_SYMBOLS[GemColor(i)]}" for i, g in enumerate(self.gems) if g > 0])
+        gems_str = ", ".join(
+            [f"{g}{GEM_COLORED_SYMBOLS[GemColor(i)]}" for i, g in enumerate(self.gems) if g > 0]
+        )
         return f"TakeGems({gems_str})"
 
 
@@ -78,6 +86,7 @@ class ReserveCardAction(SplendorAction):
 
     tier: CardTier  # 卡牌等级
     card_id: int | None  # 卡牌 ID（None 表示从牌堆顶拿）
+    action_type: ActionType | None = None
 
     def __post_init__(self):
         object.__setattr__(self, "action_type", ActionType.RESERVE_CARD)
@@ -104,6 +113,7 @@ class BuyCardAction(SplendorAction):
     card_id: int  # 卡牌 ID
     from_reserved: bool  # 是否从保留区购买
     payment: tuple[int, int, int, int, int, int] | None = None  # [R, G, B, W, Bl, Gold]
+    action_type: ActionType | None = None
 
     def __post_init__(self):
         object.__setattr__(self, "action_type", ActionType.BUY_CARD)

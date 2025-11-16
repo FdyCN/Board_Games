@@ -40,9 +40,41 @@ GEM_SYMBOLS = {
     GemColor.RED: "♦",
     GemColor.GREEN: "♣",
     GemColor.BLUE: "♠",
-    GemColor.WHITE: "○",
+    GemColor.WHITE: "●",
     GemColor.BLACK: "●",
     GemColor.GOLD: "★",
+}
+
+# ANSI 颜色代码
+class Colors:
+    """终端颜色代码"""
+    RED = "\033[91m"
+    GREEN = "\033[92m"
+    BLUE = "\033[94m"
+    WHITE = "\033[97m"
+    BLACK = "\033[90m"
+    GOLD = "\033[93m"
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+
+# 彩色宝石符号（用于终端显示）
+GEM_COLORED_SYMBOLS = {
+    GemColor.RED: f"{Colors.RED}♦{Colors.RESET}",
+    GemColor.GREEN: f"{Colors.GREEN}♣{Colors.RESET}",
+    GemColor.BLUE: f"{Colors.BLUE}♠{Colors.RESET}",
+    GemColor.WHITE: f"{Colors.WHITE}●{Colors.RESET}",
+    GemColor.BLACK: f"{Colors.BLACK}●{Colors.RESET}",
+    GemColor.GOLD: f"{Colors.GOLD}★{Colors.RESET}",
+}
+
+# 彩色宝石名称（用于详细显示）
+GEM_COLORED_NAMES = {
+    GemColor.RED: f"{Colors.RED}红宝石{Colors.RESET}",
+    GemColor.GREEN: f"{Colors.GREEN}绿宝石{Colors.RESET}",
+    GemColor.BLUE: f"{Colors.BLUE}蓝宝石{Colors.RESET}",
+    GemColor.WHITE: f"{Colors.WHITE}白宝石{Colors.RESET}",
+    GemColor.BLACK: f"{Colors.BLACK}黑宝石{Colors.RESET}",
+    GemColor.GOLD: f"{Colors.GOLD}金宝石{Colors.RESET}",
 }
 
 # 基础颜色（不包括金色）
