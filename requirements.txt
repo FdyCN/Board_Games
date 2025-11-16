@@ -1,0 +1,29 @@
+# Board Games AI Training Framework - Dependencies
+
+# ===== Core Dependencies =====
+numpy>=1.24.0,<2.0.0
+torch>=2.0.0
+
+# ===== Configuration =====
+pyyaml>=6.0
+hydra-core>=1.3.0  # 可选：高级配置管理
+
+# ===== Visualization =====
+tensorboard>=2.12.0
+matplotlib>=3.7.0
+plotly>=5.14.0  # 可选：交互式可视化
+
+# ===== Web Interface (Optional) =====
+fastapi>=0.100.0
+uvicorn>=0.22.0
+pydantic>=2.0.0
+
+# ===== Utilities =====
+tqdm>=4.65.0  # 进度条
+colorlog>=6.7.0  # 彩色日志
+
+# ===== Development Dependencies (see requirements-dev.txt) =====
+# pytest
+# black
+# ruff
+# mypy
