@@ -36,8 +36,11 @@ training:
   minibatch_size: 256  # 小批次大小
   device: "cpu"  # 设备: "cpu", "cuda", "mps"
 
+  # 数据增强
+  use_position_augmentation: true  # 启用位置旋转数据增强（减少位置偏差）
+
   # 多进程配置
-  num_workers: 4  # 并行进程数（1=单进程，>1=多进程）
+  num_workers: 2  # 并行进程数（1=单进程，>1=多进程）
 
   # Checkpoint 配置
   checkpoint_dir: "data/checkpoints/splendor_ppo/attention_medium"

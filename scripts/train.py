@@ -119,6 +119,7 @@ def main():
             minibatch_size=config.training.minibatch_size,
             checkpoint_interval=config.training.checkpoint_interval,
             log_interval=config.training.log_interval,
+            use_position_augmentation=config.training.use_position_augmentation,
         )
 
         print("\n训练完成!")

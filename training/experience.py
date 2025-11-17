@@ -73,6 +73,8 @@ class ExperienceBatch:
         experiences: List[Experience],
         device: str = "cpu",
         normalize_advantages: bool = True,
+        use_position_augmentation: bool = False,
+        num_players: int = 4,
     ) -> "ExperienceBatch":
         """
         从经验列表创建批次
@@ -81,6 +83,8 @@ class ExperienceBatch:
             experiences: 经验列表
             device: 设备 ('cpu', 'cuda', 'mps')
             normalize_advantages: 是否归一化优势函数
+            use_position_augmentation: 是否使用位置旋转数据增强
+            num_players: 玩家数量（用于数据增强）
 
         Returns:
             ExperienceBatch 实例
@@ -90,6 +94,14 @@ class ExperienceBatch:
         """
         if not experiences:
             raise ValueError("经验列表不能为空")
+
+        # 应用位置旋转数据增强（如果启用）
+        if use_position_augmentation:
+            from training.data_augmentation import apply_random_rotation_to_batch
+
+            experiences = apply_random_rotation_to_batch(
+                experiences, num_players=num_players, rotation_probability=0.5
+            )
 
         # 验证所有经验都有必要的字段
         for exp in experiences:

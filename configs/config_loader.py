@@ -59,6 +59,7 @@ class TrainingConfig:
     checkpoint_interval: int = 10
     log_interval: int = 1
     verbose: bool = True
+    use_position_augmentation: bool = True  # 启用位置旋转数据增强（减少位置偏差）
 
 
 @dataclass

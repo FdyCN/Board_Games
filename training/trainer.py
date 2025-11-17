@@ -144,6 +144,7 @@ class Trainer:
         minibatch_size: Optional[int] = 256,
         checkpoint_interval: int = 10,
         log_interval: int = 1,
+        use_position_augmentation: bool = False,
     ) -> List[TrainingMetrics]:
         """
         执行训练循环
@@ -155,6 +156,7 @@ class Trainer:
             minibatch_size: 小批次大小
             checkpoint_interval: 保存检查点的间隔（迭代数）
             log_interval: 打印日志的间隔（迭代数）
+            use_position_augmentation: 是否使用位置旋转数据增强（减少位置偏差）
 
         Returns:
             训练指标列表
@@ -177,6 +179,7 @@ class Trainer:
             print(f"PPO 更新轮数: {update_epochs}")
             print(f"小批次大小: {minibatch_size}")
             print(f"并行进程数: {self.worker.num_workers}")
+            print(f"位置增强: {'启用' if use_position_augmentation else '禁用'}")
             print(f"设备: {self.device}")
             print("=" * 60)
 
@@ -210,6 +213,8 @@ class Trainer:
                 all_experiences,
                 device=self.device,
                 normalize_advantages=True,
+                use_position_augmentation=use_position_augmentation,
+                num_players=self.game.num_players,
             )
 
             # === 3. 更新模型 ===
