@@ -41,10 +41,10 @@ pip install -e .
 
 ```bash
 # 训练 Splendor 4人对弈模型
-python scripts/train.py --config configs/experiments/splendor_ppo.yaml
+python scripts/train.py --config configs/your_config.yaml
 
 # 评估模型性能
-python scripts/evaluate.py --checkpoint data/checkpoints/splendor_v1.pth
+python scripts/evaluate.py --checkpoint data/checkpoints/splendor_ppo/latest.pth
 
 # 人机对战
 python scripts/play_human.py --game splendor
@@ -70,9 +70,8 @@ Board_Games/
 
 | 游戏 | 状态 | 玩家数 | 模型类型 | 备注 |
 |------|------|--------|----------|------|
-| **Splendor** | 🚧 开发中 | 2-4 | Attention | 首个实现游戏 |
-| **UNO** | 📋 计划中 | 2-4 | MLP | - |
-| **狼人杀** | 📋 计划中 | 6-12 | Transformer | 语言推理 |
+| **Splendor** | 🚧 开发中 | 2-4 | Attention/MLP | 首个实现游戏 |
+| **UNO** | 📋 计划中 | 2-4 | Attention/MLP | - |
 
 ## 架构文档
 
@@ -92,12 +91,12 @@ Board_Games/
 ## 开发路线图
 
 - [x] 项目架构设计
-- [ ] 核心抽象层实现
-- [ ] Splendor 游戏引擎
-- [ ] 神经网络模型
-- [ ] PPO 训练框架
+- [x]  核心抽象层实现
+- [x] Splendor 游戏引擎
+- [x] 神经网络模型
+- [x] PPO 训练框架
 - [ ] 分布式自对弈
-- [ ] ELO 评分系统
+- [x] ELO 评分系统
 - [ ] 训练可视化
 - [ ] Web 人机对战界面
 
@@ -121,29 +120,6 @@ class MyGame(GameInterface):
 
     # 实现其他抽象方法...
 ```
-
-```yaml
-# configs/games/my_game.yaml
-game:
-  name: "my_game"
-  num_players: 4
-
-model:
-  encoder: "mlp"
-  hidden_size: 256
-```
-
-```bash
-# 直接训练
-python scripts/train.py --config configs/games/my_game.yaml
-```
-
-## 性能基准
-
-**Apple M4 Max (14-core CPU, 64GB RAM)**
-- 自对弈速度：~1000 games/hour (4人 Splendor)
-- 训练吞吐：~5000 steps/sec
-- 推理延迟：<10ms/action
 
 ## 贡献指南
 
@@ -172,5 +148,5 @@ MIT License
 
 ---
 
-**当前版本**: v0.1.0-dev
-**最后更新**: 2025-11-16
+**当前版本**: v0.3.0-dev
+**最后更新**: 2025-11-17

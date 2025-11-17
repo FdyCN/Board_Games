@@ -37,8 +37,8 @@ training:
   device: "cpu"  # 设备: "cpu", "cuda", "mps"
 
   # Checkpoint 配置
-  checkpoint_dir: "data/checkpoints/splendor_ppo"
-  checkpoint_interval: 10  # 每 N 次迭代保存检查点
+  checkpoint_dir: "data/checkpoints/splendor_ppo/mlp_medium"
+  checkpoint_interval: 200  # 每 N 次迭代保存检查点
 
   # 日志配置
   log_interval: 1  # 每 N 次迭代打印日志
