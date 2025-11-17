@@ -4,20 +4,20 @@
 
 ## 项目特点
 
-- **通用性设计**：基于抽象接口，轻松适配不同桌游（Splendor、UNO、狼人杀等）
+- **通用性设计**：基于抽象接口，轻松适配不同桌游（Splendor、UNO等）
 - **轻量化模型**：针对桌游场景优化，模型参数量 100K-1M，适合本地训练和部署
-- **分布式训练**：多进程并行自对弈，充分利用多核 CPU（Apple M4 Max 优化）
+- **多进程训练**：支持多核CPU并行自对弈，显著提升训练效率
 - **完整评估体系**：ELO 评分系统、锦标赛管理、性能指标追踪
-- **实时可视化**：训练监控、对局回放、Web 人机对战界面
+- **实时可视化**：【TBD】训练监控、对局回放、Web 人机对战界面
 - **灵活配置**：YAML 配置驱动，支持快速实验迭代
 
 ## 快速开始
 
-### 环境要求
+### 开发环境
 
 - Python 3.10+
 - PyTorch 2.0+ (支持 MPS 加速)
-- 64GB RAM (推荐)
+- Apple M4 Max 64GB
 
 ### 安装
 
@@ -40,8 +40,11 @@ pip install -e .
 ### 训练你的第一个 Agent
 
 ```bash
-# 训练 Splendor 4人对弈模型
-python scripts/train.py --config configs/your_config.yaml
+# 训练 Splendor 4人对弈模型（单进程）
+python scripts/train.py --config configs/splendor_ppo_mlp_medium.yaml
+
+# 使用多进程加速训练（推荐CPU训练时使用）
+# 在配置文件中设置 training.num_workers: 4
 
 # 评估模型性能
 python scripts/evaluate.py --checkpoint data/checkpoints/splendor_ppo/latest.pth
@@ -49,6 +52,22 @@ python scripts/evaluate.py --checkpoint data/checkpoints/splendor_ppo/latest.pth
 # 人机对战
 python scripts/play_human.py --game splendor
 ```
+
+#### 多进程训练配置
+
+在配置文件中调整 `num_workers` 参数以启用多核并行训练：
+
+```yaml
+training:
+  num_workers: 4  # 并行进程数（1=单进程，>1=多进程）
+  episodes_per_iteration: 50
+  device: "cpu"  # 多进程训练推荐使用CPU
+```
+
+**性能建议**：
+- 设置 `num_workers` 为 CPU 核心数的 50-75%
+- 例如 8 核 CPU 推荐设置为 4-6 workers
+- 多进程可将训练速度提升 2-4 倍
 
 ## 项目结构
 

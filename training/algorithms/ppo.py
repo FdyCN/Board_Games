@@ -158,12 +158,10 @@ class PPO:
         advantages = batch.advantages
         returns = batch.returns
 
-        # 前向传播
-        # 创建一个全为 True 的合法动作掩码（因为经验中的动作都是已选择的）
-        # 实际上在训练时我们不需要掩码，因为我们只评估已选择的动作
-        legal_mask = None  # 在 evaluate_actions 中会被忽略
+        # 使用保存的合法动作掩码（用于正确计算熵）
+        legal_mask = batch.legal_actions_masks
 
-        new_log_probs, entropy, new_values = self.model.evaluate_actions(
+        new_values, new_log_probs, entropy = self.model.evaluate_actions(
             observations, actions, legal_mask
         )
 

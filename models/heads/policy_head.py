@@ -75,7 +75,8 @@ class PolicyHead(nn.Module):
         # 应用合法动作掩码
         if legal_actions_mask is not None:
             # 将非法动作的 logits 设为 -inf
-            logits = torch.where(legal_actions_mask, logits, torch.tensor(float("-inf")))
+            # 注意: legal_actions_mask 是 float (0.0/1.0)，需要转换为 bool
+            logits = torch.where(legal_actions_mask.bool(), logits, torch.tensor(float("-inf"), device=logits.device))
 
         return logits
 

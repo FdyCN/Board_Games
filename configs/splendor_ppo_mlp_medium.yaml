@@ -36,6 +36,9 @@ training:
   minibatch_size: 256  # 小批次大小
   device: "cpu"  # 设备: "cpu", "cuda", "mps"
 
+  # 多进程配置
+  num_workers: 4  # 并行进程数（1=单进程，>1=多进程）
+
   # Checkpoint 配置
   checkpoint_dir: "data/checkpoints/splendor_ppo/mlp_medium"
   checkpoint_interval: 200  # 每 N 次迭代保存检查点

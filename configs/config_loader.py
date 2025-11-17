@@ -54,6 +54,7 @@ class TrainingConfig:
     update_epochs: int = 4
     minibatch_size: int = 256
     device: str = "cpu"
+    num_workers: int = 1  # 并行进程数（1=单进程，>1=多进程）
     checkpoint_dir: str = "data/checkpoints"
     checkpoint_interval: int = 10
     log_interval: int = 1

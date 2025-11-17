@@ -30,15 +30,18 @@ algorithm:
 
 # 训练配置
 training:
-  num_iterations: 1000  # 总迭代次数
-  episodes_per_iteration: 50  # 每次迭代收集的 episode 数
+  num_iterations: 800  # 总迭代次数
+  episodes_per_iteration: 64  # 每次迭代收集的 episode 数
   update_epochs: 4  # PPO 更新轮数
   minibatch_size: 256  # 小批次大小
   device: "cpu"  # 设备: "cpu", "cuda", "mps"
 
+  # 多进程配置
+  num_workers: 4  # 并行进程数（1=单进程，>1=多进程）
+
   # Checkpoint 配置
   checkpoint_dir: "data/checkpoints/splendor_ppo/attention_medium"
-  checkpoint_interval: 200  # 每 N 次迭代保存检查点
+  checkpoint_interval: 100  # 每 N 次迭代保存检查点
 
   # 日志配置
   log_interval: 1  # 每 N 次迭代打印日志

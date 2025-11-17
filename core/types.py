@@ -56,6 +56,7 @@ class Experience:
         log_prob: 动作的对数概率（PPO 用）
         value: 状态价值估计（PPO 用）
         advantage: 优势函数（计算后填充）
+        legal_actions_mask: 合法动作掩码（用于正确计算熵）
     """
 
     player_id: PlayerID
@@ -68,6 +69,7 @@ class Experience:
     value: float | None = None
     advantage: float | None = None
     returns: float | None = None  # 回报（用于价值函数训练）
+    legal_actions_mask: np.ndarray | None = None  # 合法动作掩码
 
     def __post_init__(self):
         """验证数据有效性"""

@@ -55,6 +55,9 @@ dmypy.json
 # Temp docs
 docs/*
 
+# Backup scripts
+scripts/backup
+
 # Data and Logs
 data/checkpoints/*
 data/checkpoints/*.pth

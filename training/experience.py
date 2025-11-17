@@ -24,6 +24,7 @@ class ExperienceBatch:
         advantages: 优势函数 (batch_size,)
         returns: 回报 (batch_size,)
         values: 状态价值 (batch_size,)
+        legal_actions_masks: 合法动作掩码 (batch_size, action_size) - 用于正确计算熵
 
     Examples:
         >>> experiences = [exp1, exp2, exp3, ...]
@@ -41,6 +42,7 @@ class ExperienceBatch:
         advantages: torch.Tensor,
         returns: torch.Tensor,
         values: torch.Tensor,
+        legal_actions_masks: torch.Tensor | None = None,
     ):
         self.observations = observations
         self.actions = actions
@@ -48,6 +50,7 @@ class ExperienceBatch:
         self.advantages = advantages
         self.returns = returns
         self.values = values
+        self.legal_actions_masks = legal_actions_masks
 
         # 验证形状一致性
         batch_size = len(observations)
@@ -56,6 +59,8 @@ class ExperienceBatch:
         assert len(advantages) == batch_size
         assert len(returns) == batch_size
         assert len(values) == batch_size
+        if legal_actions_masks is not None:
+            assert len(legal_actions_masks) == batch_size
 
     @property
     def batch_size(self) -> int:
@@ -101,12 +106,21 @@ class ExperienceBatch:
         returns = np.array([exp.returns for exp in experiences], dtype=np.float32)
         values = np.array([exp.value for exp in experiences], dtype=np.float32)
 
+        # 提取合法动作掩码
+        legal_actions_masks = None
+        if experiences[0].legal_actions_mask is not None:
+            legal_actions_masks = np.stack([exp.legal_actions_mask for exp in experiences])
+
         # 归一化优势函数
         if normalize_advantages and len(advantages) > 1:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         # 转换为张量
         device_obj = torch.device(device)
+        legal_masks_tensor = None
+        if legal_actions_masks is not None:
+            legal_masks_tensor = torch.from_numpy(legal_actions_masks).float().to(device_obj)
+
         return cls(
             observations=torch.from_numpy(observations).float().to(device_obj),
             actions=torch.from_numpy(actions).long().to(device_obj),
@@ -114,6 +128,7 @@ class ExperienceBatch:
             advantages=torch.from_numpy(advantages).float().to(device_obj),
             returns=torch.from_numpy(returns).float().to(device_obj),
             values=torch.from_numpy(values).float().to(device_obj),
+            legal_actions_masks=legal_masks_tensor,
         )
 
     def iterate_minibatches(
@@ -144,6 +159,7 @@ class ExperienceBatch:
                 advantages=self.advantages[batch_indices],
                 returns=self.returns[batch_indices],
                 values=self.values[batch_indices],
+                legal_actions_masks=self.legal_actions_masks[batch_indices] if self.legal_actions_masks is not None else None,
             )
 
     def to(self, device: str) -> "ExperienceBatch":
@@ -164,6 +180,7 @@ class ExperienceBatch:
             advantages=self.advantages.to(device_obj),
             returns=self.returns.to(device_obj),
             values=self.values.to(device_obj),
+            legal_actions_masks=self.legal_actions_masks.to(device_obj) if self.legal_actions_masks is not None else None,
         )
 
 

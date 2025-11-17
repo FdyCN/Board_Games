@@ -88,15 +88,29 @@ def main():
         device=config.training.device,
         checkpoint_dir=config.training.checkpoint_dir,
         verbose=config.training.verbose,
+        num_workers=config.training.num_workers,
     )
 
     # 恢复训练（如果指定）
     if args.resume:
-        print(f"\n恢复训练: {args.resume}")
+        print(f"\n{'='*60}")
+        print(f"📥 恢复训练模式")
+        print(f"{'='*60}")
+        print(f"加载检查点: {args.resume}")
         trainer.load_checkpoint(args.resume)
+        print(f"将从迭代 {trainer.iteration} 继续训练")
+        print(f"{'='*60}")
+    else:
+        print(f"\n{'='*60}")
+        print(f"🆕 全新训练模式 (从头开始)")
+        print(f"{'='*60}")
+        print(f"模型: {config.model.encoder_type} ({config.model.config})")
+        print(f"参数量: {trainer.model.count_parameters()['total']:,}")
+        print(f"检查点目录: {config.training.checkpoint_dir}")
+        print(f"{'='*60}")
 
     # 开始训练
-    print("\n开始训练...")
+    print("\n🚀 开始训练...")
     try:
         metrics = trainer.train(
             num_iterations=config.training.num_iterations,

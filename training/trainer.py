@@ -66,6 +66,7 @@ class Trainer:
         device: str = "cpu",
         checkpoint_dir: Optional[str] = None,
         verbose: bool = True,
+        num_workers: int = 1,
     ):
         """
         初始化训练器
@@ -83,6 +84,7 @@ class Trainer:
             device: 设备
             checkpoint_dir: 检查点保存目录
             verbose: 是否打印详细信息
+            num_workers: 并行进程数（1=单进程，>1=多进程）
         """
         self.game = game
         self.model = model
@@ -91,6 +93,7 @@ class Trainer:
         self.device = device
         self.checkpoint_dir = checkpoint_dir
         self.verbose = verbose
+        self.num_workers = num_workers
 
         # 创建 PPO 训练器
         self.ppo = PPO(
@@ -117,6 +120,7 @@ class Trainer:
             gae_lambda=gae_lambda,
             deterministic=False,
             verbose=False,
+            num_workers=num_workers,
         )
 
         # Episode 缓冲区
@@ -160,21 +164,28 @@ class Trainer:
 
         all_metrics = []
 
+        # 保存起始迭代次数（用于恢复训练）
+        start_iteration = self.iteration
+
         if self.verbose:
             print("=" * 60)
-            print("开始训练")
-            print(f"迭代次数: {num_iterations}")
+            print("📊 训练配置")
+            print("=" * 60)
+            print(f"起始迭代: {start_iteration + 1}")
+            print(f"目标迭代: {start_iteration + num_iterations}")
             print(f"每次迭代 episodes: {episodes_per_iteration}")
             print(f"PPO 更新轮数: {update_epochs}")
             print(f"小批次大小: {minibatch_size}")
+            print(f"并行进程数: {self.worker.num_workers}")
+            print(f"设备: {self.device}")
             print("=" * 60)
 
         for iteration in range(num_iterations):
-            self.iteration = iteration + 1
+            self.iteration = start_iteration + iteration + 1
 
             # === 1. 收集数据 ===
             if self.verbose and iteration % log_interval == 0:
-                print(f"\n迭代 {self.iteration}/{num_iterations}: 收集数据...")
+                print(f"\n迭代 {self.iteration}/{start_iteration + num_iterations}: 收集数据...")
 
             collection_start = time.time()
             episodes = self.worker.collect(num_episodes=episodes_per_iteration)
