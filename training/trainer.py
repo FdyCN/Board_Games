@@ -22,6 +22,13 @@ from training.experience import (
     split_episodes_by_player,
 )
 
+# TensorBoard 支持
+try:
+    from torch.utils.tensorboard import SummaryWriter
+    TENSORBOARD_AVAILABLE = True
+except ImportError:
+    TENSORBOARD_AVAILABLE = False
+
 
 class Trainer:
     """
@@ -67,6 +74,9 @@ class Trainer:
         checkpoint_dir: Optional[str] = None,
         verbose: bool = True,
         num_workers: int = 1,
+        use_tensorboard: bool = True,
+        tensorboard_dir: Optional[str] = None,
+        use_value_clip: bool = True,
     ):
         """
         初始化训练器
@@ -85,6 +95,9 @@ class Trainer:
             checkpoint_dir: 检查点保存目录
             verbose: 是否打印详细信息
             num_workers: 并行进程数（1=单进程，>1=多进程）
+            use_tensorboard: 是否启用 TensorBoard
+            tensorboard_dir: TensorBoard 日志目录（默认为 checkpoint_dir/tensorboard）
+            use_value_clip: 是否使用价值损失裁剪（推荐启用以稳定训练）
         """
         self.game = game
         self.model = model
@@ -104,6 +117,7 @@ class Trainer:
             entropy_coef=entropy_coef,
             max_grad_norm=max_grad_norm,
             device=device,
+            use_value_clip=use_value_clip,
         )
 
         # 创建 Neural Agents（所有玩家共享同一个模型）
@@ -135,6 +149,19 @@ class Trainer:
         # 创建检查点目录
         if checkpoint_dir:
             Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+
+        # TensorBoard 设置
+        self.writer = None
+        if use_tensorboard and TENSORBOARD_AVAILABLE:
+            if tensorboard_dir is None:
+                tensorboard_dir = os.path.join(checkpoint_dir or "runs", "tensorboard")
+            Path(tensorboard_dir).mkdir(parents=True, exist_ok=True)
+            self.writer = SummaryWriter(tensorboard_dir)
+            if self.verbose:
+                print(f"TensorBoard 日志目录: {tensorboard_dir}")
+        elif use_tensorboard and not TENSORBOARD_AVAILABLE:
+            if self.verbose:
+                print("警告: TensorBoard 不可用，请安装 tensorboard: pip install tensorboard")
 
     def train(
         self,
@@ -262,6 +289,41 @@ class Trainer:
                 print(f"  Clip Fraction: {metrics.clip_fraction:.4f}")
                 print(f"  总时间: {elapsed_time:.1f}s")
 
+            # === 5.5 TensorBoard 记录 ===
+            if self.writer is not None:
+                # 损失指标
+                self.writer.add_scalar("Loss/policy", metrics.policy_loss, self.iteration)
+                self.writer.add_scalar("Loss/value", metrics.value_loss, self.iteration)
+                self.writer.add_scalar("Loss/entropy", metrics.entropy, self.iteration)
+
+                # 性能指标
+                self.writer.add_scalar("Performance/mean_reward", metrics.mean_reward, self.iteration)
+                self.writer.add_scalar("Performance/mean_episode_length", metrics.mean_episode_length, self.iteration)
+
+                # PPO 指标
+                self.writer.add_scalar("PPO/kl_divergence", metrics.kl_divergence, self.iteration)
+                self.writer.add_scalar("PPO/clip_fraction", metrics.clip_fraction, self.iteration)
+                self.writer.add_scalar("PPO/learning_rate", metrics.learning_rate, self.iteration)
+
+                # 位置偏差指标
+                win_rates = [c / len(episodes) for c in win_counts]
+                for i, rate in enumerate(win_rates):
+                    self.writer.add_scalar(f"WinRate/position_{i}", rate, self.iteration)
+
+                # 位置偏差统计
+                win_rate_std = np.std(win_rates)
+                win_rate_range = max(win_rates) - min(win_rates)
+                self.writer.add_scalar("PositionBias/win_rate_std", win_rate_std, self.iteration)
+                self.writer.add_scalar("PositionBias/win_rate_range", win_rate_range, self.iteration)
+
+                # 时间指标
+                self.writer.add_scalar("Time/collection_time", collection_time, self.iteration)
+                self.writer.add_scalar("Time/update_time", update_time, self.iteration)
+
+                # 定期刷新，确保训练中可以实时查看
+                if self.iteration % 10 == 0:
+                    self.writer.flush()
+
             # === 6. 保存检查点 ===
             if self.checkpoint_dir and (iteration + 1) % checkpoint_interval == 0:
                 self._save_checkpoint()
@@ -276,7 +338,17 @@ class Trainer:
             print(f"总时间: {total_time:.1f}s")
             print("=" * 60)
 
+        # 刷新 TensorBoard 日志
+        if self.writer is not None:
+            self.writer.flush()
+
         return all_metrics
+
+    def close(self) -> None:
+        """关闭训练器资源"""
+        if self.writer is not None:
+            self.writer.close()
+            self.writer = None
 
     def _save_checkpoint(self) -> None:
         """保存训练检查点"""

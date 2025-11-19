@@ -376,6 +376,224 @@ class TestSplendorGameClone:
         assert game2._state.players[0].total_gems() == 0
 
 
+class TestSplendorDenseRewards:
+    """测试稠密奖励系统"""
+
+    def test_take_gems_reward(self):
+        """测试拿宝石的稠密奖励"""
+        game = SplendorGame(num_players=4, seed=42)
+        state = game.reset()
+
+        # 拿 3 个不同颜色宝石
+        action = create_take_three_different([GemColor.RED, GemColor.GREEN, GemColor.BLUE])
+        new_state, rewards, done, info = game.step(action)
+
+        # 应该获得 0.02 * 3 = 0.06 的奖励（使用新默认值 2x）
+        assert rewards[0] == pytest.approx(0.06, rel=1e-5)
+        assert info["dense_reward"] == pytest.approx(0.06, rel=1e-5)
+
+    def test_take_two_same_gems_reward(self):
+        """测试拿 2 个相同颜色宝石的奖励"""
+        game = SplendorGame(num_players=4, seed=42)
+        state = game.reset()
+
+        # 拿 2 个红宝石
+        action = create_take_two_same(GemColor.RED)
+        new_state, rewards, done, info = game.step(action)
+
+        # 应该获得 0.02 * 2 = 0.04 的奖励
+        assert rewards[0] == pytest.approx(0.04, rel=1e-5)
+
+    def test_reserve_card_reward(self):
+        """测试保留卡牌的稠密奖励"""
+        game = SplendorGame(num_players=4, seed=42)
+        state = game.reset()
+
+        # 获取第一张公开卡
+        card = state.open_cards[CardTier.TIER_1][0]
+        action = ReserveCardAction(tier=CardTier.TIER_1, card_id=card.card_id)
+
+        new_state, rewards, done, info = game.step(action)
+
+        # 应该获得 0.04 (保留) + 0.06 (金宝石) = 0.10 的奖励
+        assert rewards[0] == pytest.approx(0.10, rel=1e-5)
+        assert info["got_gold"] is True
+
+    def test_reserve_card_without_gold(self):
+        """测试没有金宝石时保留卡牌的奖励"""
+        game = SplendorGame(num_players=4, seed=42)
+        state = game.reset()
+
+        # 清空金宝石
+        state.gem_bank[GemColor.GOLD] = 0
+
+        card = state.open_cards[CardTier.TIER_1][0]
+        action = ReserveCardAction(tier=CardTier.TIER_1, card_id=card.card_id)
+
+        new_state, rewards, done, info = game.step(action)
+
+        # 只有保留奖励 0.04
+        assert rewards[0] == pytest.approx(0.04, rel=1e-5)
+        assert info["got_gold"] is False
+
+    def test_buy_card_reward(self):
+        """测试购买卡牌的稠密奖励"""
+        game = SplendorGame(num_players=4, seed=42)
+        state = game.reset()
+
+        # 找一张有分数的便宜卡
+        target_card = None
+        for card in state.open_cards[CardTier.TIER_1]:
+            if card.points > 0:
+                target_card = card
+                break
+
+        if target_card is None:
+            # 如果没找到，使用第一张卡
+            target_card = state.open_cards[CardTier.TIER_1][0]
+
+        # 给玩家足够的宝石
+        player = state.players[0]
+        for i, cost in enumerate(target_card.cost):
+            player.gems[i] = cost
+
+        action = BuyCardAction(card_id=target_card.card_id, from_reserved=False)
+        new_state, rewards, done, info = game.step(action)
+
+        # 奖励 = 0.30 * points + 0.10 (加成)
+        expected_reward = 0.30 * target_card.points + 0.10
+        assert rewards[0] == pytest.approx(expected_reward, rel=1e-5)
+
+    def test_noble_visit_reward(self):
+        """测试获得贵族的稠密奖励"""
+        game = SplendorGame(num_players=4, seed=42)
+        state = game.reset()
+
+        # 找一个贵族并给玩家足够的卡牌加成
+        if state.nobles:
+            noble = state.nobles[0]
+            player = state.players[0]
+
+            from games.splendor.cards import DevelopmentCard
+
+            for i, req in enumerate(noble.requirements):
+                for _ in range(req):
+                    card = DevelopmentCard(
+                        card_id=1000 + i,
+                        tier=CardTier.TIER_1,
+                        points=0,
+                        bonus_color=GemColor(i),
+                        cost=(0, 0, 0, 0, 0),
+                    )
+                    player.cards.append(card)
+
+            # 执行拿宝石动作触发贵族检查
+            action = create_take_three_different([GemColor.RED, GemColor.GREEN, GemColor.BLUE])
+            new_state, rewards, done, info = game.step(action)
+
+            # 奖励 = 0.06 (拿宝石) + 0.6 (贵族)
+            expected_reward = 0.06 + 0.6
+            assert rewards[0] == pytest.approx(expected_reward, rel=1e-5)
+            assert "noble_visit" in info
+
+    def test_discard_gems_penalty(self):
+        """测试丢弃宝石的惩罚"""
+        game = SplendorGame(num_players=4, seed=42)
+        state = game.reset()
+
+        # 给玩家 9 个宝石（接近上限）
+        player = state.players[0]
+        player.gems[GemColor.RED] = 3
+        player.gems[GemColor.GREEN] = 3
+        player.gems[GemColor.BLUE] = 3  # 总共 9 个
+
+        # 拿 3 个宝石，会超过 10 个上限，需要丢弃 2 个
+        action = create_take_three_different([GemColor.WHITE, GemColor.BLACK, GemColor.RED])
+        new_state, rewards, done, info = game.step(action)
+
+        # 玩家现在应该有 10 个宝石
+        assert new_state.players[0].total_gems() == 10
+        # 丢弃了 2 个宝石
+        assert info["gems_discarded"] == 2
+
+        # 奖励 = 0.02 * 3 (拿取) + (-0.10) * 2 (丢弃) = 0.06 - 0.2 = -0.14
+        expected_reward = 0.02 * 3 + (-0.10) * 2
+        assert rewards[0] == pytest.approx(expected_reward, rel=1e-5)
+        assert rewards[0] < 0  # 应该是负奖励
+
+    def test_win_reward_stacks_with_dense(self):
+        """测试胜利奖励与稠密奖励叠加"""
+        game = SplendorGame(num_players=4, seed=42)
+        state = game.reset()
+
+        # 给玩家 3 足够的分数
+        from games.splendor.cards import DevelopmentCard
+
+        player = state.players[3]
+        for i in range(3):
+            card = DevelopmentCard(
+                card_id=2000 + i,
+                tier=CardTier.TIER_3,
+                points=5,
+                bonus_color=GemColor.RED,
+                cost=(0, 0, 0, 0, 0),
+            )
+            player.cards.append(card)
+
+        # 进入最后一轮
+        state.phase = GamePhase.FINAL_ROUND
+        # 设置为最后一个玩家（这样游戏会结束）
+        state.current_player = 3
+
+        # 执行动作
+        action = create_take_three_different([GemColor.RED, GemColor.GREEN, GemColor.BLUE])
+        new_state, rewards, done, info = game.step(action)
+
+        # 游戏应该结束，玩家 3 获得稠密奖励 + 胜利奖励
+        assert done
+        # 稠密奖励 0.06 + 胜利奖励 1.0
+        assert rewards[3] == pytest.approx(1.06, rel=1e-5)
+
+
+class TestSplendorInfoFields:
+    """测试 info 字段的完整性"""
+
+    def test_info_contains_dense_reward(self):
+        """测试 info 包含 dense_reward 字段"""
+        game = SplendorGame(num_players=4, seed=42)
+        state = game.reset()
+
+        action = create_take_three_different([GemColor.RED, GemColor.GREEN, GemColor.BLUE])
+        new_state, rewards, done, info = game.step(action)
+
+        assert "dense_reward" in info
+        assert isinstance(info["dense_reward"], float)
+
+    def test_info_contains_gems_discarded(self):
+        """测试拿宝石动作的 info 包含 gems_discarded"""
+        game = SplendorGame(num_players=4, seed=42)
+        state = game.reset()
+
+        action = create_take_three_different([GemColor.RED, GemColor.GREEN, GemColor.BLUE])
+        new_state, rewards, done, info = game.step(action)
+
+        assert "gems_discarded" in info
+        assert info["gems_discarded"] == 0  # 正常情况不丢弃
+
+    def test_info_contains_got_gold(self):
+        """测试保留卡牌动作的 info 包含 got_gold"""
+        game = SplendorGame(num_players=4, seed=42)
+        state = game.reset()
+
+        card = state.open_cards[CardTier.TIER_1][0]
+        action = ReserveCardAction(tier=CardTier.TIER_1, card_id=card.card_id)
+
+        new_state, rewards, done, info = game.step(action)
+
+        assert "got_gold" in info
+        assert info["got_gold"] is True
+
+
 class TestSplendorGameRender:
     """测试游戏渲染"""
 
@@ -418,8 +636,8 @@ class TestSplendorGameIntegration:
                 # 应该有赢家
                 winner = state.get_winner()
                 assert 0 <= winner < game.num_players
-                # 赢家应该得到 1.0 奖励
-                assert rewards[winner] == 1.0
+                # 赢家应该得到 >= 1.0 奖励（1.0 胜利奖励 + 稠密奖励）
+                assert rewards[winner] >= 1.0
                 break
 
     def test_game_registration(self):

@@ -54,7 +54,22 @@ def main():
 
     # 创建游戏
     print("创建游戏...")
-    game = create_game(config.game.name, num_players=config.game.num_players)
+    # 将 dense_rewards 配置转换为字典
+    reward_config = {
+        "take_gem": config.algorithm.dense_rewards.take_gem,
+        "discard_gem": config.algorithm.dense_rewards.discard_gem,
+        "reserve_card": config.algorithm.dense_rewards.reserve_card,
+        "get_gold": config.algorithm.dense_rewards.get_gold,
+        "buy_card_points": config.algorithm.dense_rewards.buy_card_points,
+        "buy_card_bonus": config.algorithm.dense_rewards.buy_card_bonus,
+        "noble_visit": config.algorithm.dense_rewards.noble_visit,
+        "win": config.algorithm.dense_rewards.win,
+    }
+    game = create_game(
+        config.game.name,
+        num_players=config.game.num_players,
+        reward_config=reward_config
+    )
     print(f"  观察维度: {game.observation_shape}")
     print(f"  动作空间: {game.action_space_size}")
 
@@ -89,6 +104,8 @@ def main():
         checkpoint_dir=config.training.checkpoint_dir,
         verbose=config.training.verbose,
         num_workers=config.training.num_workers,
+        use_tensorboard=True,
+        use_value_clip=config.algorithm.use_value_clip,
     )
 
     # 恢复训练（如果指定）
@@ -141,6 +158,10 @@ def main():
         print("\n保存紧急检查点...")
         trainer._save_checkpoint()
         sys.exit(1)
+
+    finally:
+        # 关闭 TensorBoard writer
+        trainer.close()
 
 
 if __name__ == "__main__":

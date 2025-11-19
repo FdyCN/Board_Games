@@ -32,6 +32,23 @@ class ModelConfig:
 
 
 @dataclass
+class DenseRewardsConfig:
+    """稠密奖励配置（PPO 专用）
+
+    注意：这些系数已调整为原来的 2 倍，以增强学习信号并减少回报方差
+    """
+
+    take_gem: float = 0.02           # 每个拿取的宝石（原 0.01）
+    discard_gem: float = -0.10       # 每个丢弃的宝石（惩罚，原 -0.05）
+    reserve_card: float = 0.04       # 保留卡牌（原 0.02）
+    get_gold: float = 0.06           # 获得金宝石（原 0.03）
+    buy_card_points: float = 0.30    # 购买卡牌（每分，原 0.15）
+    buy_card_bonus: float = 0.10     # 购买卡牌（获得永久宝石加成，原 0.05）
+    noble_visit: float = 0.6         # 获得贵族（原 0.3）
+    win: float = 1.0                 # 游戏胜利（不变）
+
+
+@dataclass
 class AlgorithmConfig:
     """算法配置"""
 
@@ -43,6 +60,8 @@ class AlgorithmConfig:
     value_coef: float = 0.5
     entropy_coef: float = 0.01
     max_grad_norm: float = 0.5
+    use_value_clip: bool = True  # 是否使用价值损失裁剪（推荐启用）
+    dense_rewards: DenseRewardsConfig = field(default_factory=DenseRewardsConfig)
 
 
 @dataclass
@@ -94,10 +113,17 @@ class Config:
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "Config":
         """从字典创建配置"""
+        # 解析 algorithm 配置，处理嵌套的 dense_rewards
+        algorithm_dict = config_dict.get("algorithm", {})
+        dense_rewards_dict = algorithm_dict.pop("dense_rewards", {})
+        algorithm_config = AlgorithmConfig(**algorithm_dict)
+        if dense_rewards_dict:
+            algorithm_config.dense_rewards = DenseRewardsConfig(**dense_rewards_dict)
+
         return cls(
             game=GameConfig(**config_dict.get("game", {})),
             model=ModelConfig(**config_dict.get("model", {})),
-            algorithm=AlgorithmConfig(**config_dict.get("algorithm", {})),
+            algorithm=algorithm_config,
             training=TrainingConfig(**config_dict.get("training", {})),
             evaluation=EvaluationConfig(**config_dict.get("evaluation", {})),
             experiment=ExperimentConfig(**config_dict.get("experiment", {})),
@@ -117,10 +143,13 @@ class Config:
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
+        algorithm_dict = self.algorithm.__dict__.copy()
+        algorithm_dict["dense_rewards"] = self.algorithm.dense_rewards.__dict__
+
         return {
             "game": self.game.__dict__,
             "model": self.model.__dict__,
-            "algorithm": self.algorithm.__dict__,
+            "algorithm": algorithm_dict,
             "training": self.training.__dict__,
             "evaluation": self.evaluation.__dict__,
             "experiment": self.experiment.__dict__,
@@ -133,6 +162,7 @@ __all__ = [
     "GameConfig",
     "ModelConfig",
     "AlgorithmConfig",
+    "DenseRewardsConfig",
     "TrainingConfig",
     "EvaluationConfig",
     "ExperimentConfig",

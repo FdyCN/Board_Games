@@ -55,13 +55,26 @@ class SplendorGame(GameInterface):
     支持 2-4 名玩家的宝石商人策略游戏
     """
 
-    def __init__(self, num_players: int = 4, seed: int | None = None):
+    # 默认奖励系数（已调整为原来的 2 倍以增强学习信号）
+    DEFAULT_REWARDS = {
+        "take_gem": 0.02,
+        "discard_gem": -0.10,
+        "reserve_card": 0.04,
+        "get_gold": 0.06,
+        "buy_card_points": 0.30,
+        "buy_card_bonus": 0.10,
+        "noble_visit": 0.6,
+        "win": 1.0,
+    }
+
+    def __init__(self, num_players: int = 4, seed: int | None = None, reward_config: dict | None = None):
         """
         初始化游戏
 
         Args:
             num_players: 玩家数量 (2-4)
             seed: 随机种子
+            reward_config: 奖励配置字典（可选，用于 PPO 训练）
         """
         if not 2 <= num_players <= 4:
             raise ValueError(f"玩家数量必须在 2-4 之间，当前: {num_players}")
@@ -69,6 +82,11 @@ class SplendorGame(GameInterface):
         self._num_players = num_players
         self._seed = seed
         self._rng = random.Random(seed)
+
+        # 设置奖励配置
+        self._rewards = self.DEFAULT_REWARDS.copy()
+        if reward_config:
+            self._rewards.update(reward_config)
 
         # 加载卡牌数据
         self._all_cards = load_development_cards()
@@ -162,21 +180,43 @@ class SplendorGame(GameInterface):
         # 深拷贝状态
         new_state = deepcopy(self._state)
         current_player = new_state.get_current_player_state()
+        player_id = new_state.current_player
+
+        # 初始化稠密奖励
+        dense_reward = 0.0
 
         # 执行动作
-        info = {"action_type": action.action_type, "player_id": new_state.current_player}
+        info = {"action_type": action.action_type, "player_id": player_id}
 
         if isinstance(action, TakeGemsAction):
-            self._execute_take_gems(new_state, current_player, action)
+            gems_taken, gems_discarded = self._execute_take_gems(new_state, current_player, action)
             info["gems_taken"] = action.gems
+            info["gems_discarded"] = gems_discarded
+
+            # 稠密奖励：拿取宝石
+            dense_reward += self._rewards["take_gem"] * gems_taken
+            # 惩罚：丢弃宝石
+            dense_reward += self._rewards["discard_gem"] * gems_discarded
 
         elif isinstance(action, ReserveCardAction):
-            card = self._execute_reserve_card(new_state, current_player, action)
+            card, got_gold = self._execute_reserve_card(new_state, current_player, action)
             info["card_reserved"] = card.card_id if card else None
+            info["got_gold"] = got_gold
+
+            # 稠密奖励：保留卡牌
+            dense_reward += self._rewards["reserve_card"]
+            # 稠密奖励：获得金宝石
+            if got_gold:
+                dense_reward += self._rewards["get_gold"]
 
         elif isinstance(action, BuyCardAction):
             card = self._execute_buy_card(new_state, current_player, action)
             info["card_bought"] = card.card_id
+
+            # 稠密奖励：购买卡牌（根据分数）
+            dense_reward += self._rewards["buy_card_points"] * card.points
+            # 稠密奖励：获得永久宝石加成
+            dense_reward += self._rewards["buy_card_bonus"]
 
         # 检查贵族拜访
         visiting_nobles = self._check_noble_visits(new_state, current_player)
@@ -186,6 +226,9 @@ class SplendorGame(GameInterface):
             current_player.nobles.append(noble)
             new_state.nobles.remove(noble)
             info["noble_visit"] = noble.noble_id
+
+            # 稠密奖励：获得贵族
+            dense_reward += self._rewards["noble_visit"]
 
         # 检查游戏结束条件
         if current_player.get_score() >= WINNING_SCORE:
@@ -202,13 +245,17 @@ class SplendorGame(GameInterface):
         new_state.current_player = (new_state.current_player + 1) % self._num_players
         new_state.turn_number += 1
 
-        # 计算奖励（稀疏奖励：只在游戏结束时给）
+        # 计算最终奖励（稠密奖励 + 稀疏终局奖励）
         rewards = [0.0] * self._num_players
-        done = new_state.is_terminal()
+        rewards[player_id] = dense_reward
 
+        done = new_state.is_terminal()
         if done:
             winner = new_state.get_winner()
-            rewards[winner] = 1.0
+            rewards[winner] += self._rewards["win"]  # 胜利奖励叠加到稠密奖励上
+
+        # 记录稠密奖励到 info
+        info["dense_reward"] = dense_reward
 
         self._state = new_state
         return new_state, rewards, done, info
@@ -403,7 +450,11 @@ class SplendorGame(GameInterface):
 
     def clone(self) -> "SplendorGame":
         """克隆游戏实例"""
-        new_game = SplendorGame(num_players=self._num_players, seed=self._seed)
+        new_game = SplendorGame(
+            num_players=self._num_players,
+            seed=self._seed,
+            reward_config=self._rewards.copy()
+        )
         if self._state is not None:
             new_game._state = deepcopy(self._state)
         return new_game
@@ -461,27 +512,44 @@ class SplendorGame(GameInterface):
 
     # ===== 内部辅助方法 =====
 
-    def _execute_take_gems(self, state: SplendorState, player: PlayerState, action: TakeGemsAction):
-        """执行拿宝石动作"""
+    def _execute_take_gems(self, state: SplendorState, player: PlayerState, action: TakeGemsAction) -> tuple[int, int]:
+        """
+        执行拿宝石动作
+
+        Returns:
+            (gems_taken, gems_discarded): 拿取的宝石数量和丢弃的宝石数量
+        """
+        gems_taken = 0
         for color in range(NUM_GEM_COLORS):
             gems_to_take = action.get_gem_count(GemColor(color))
             if gems_to_take > 0:
                 player.gems[color] += gems_to_take
                 state.gem_bank[color] -= gems_to_take
+                gems_taken += gems_to_take
 
         # 如果超过 10 个宝石，需要丢弃（这里简化处理，自动丢弃多余的）
+        gems_discarded = 0
         while player.total_gems() > MAX_GEMS_IN_HAND:
             # 找到数量最多的宝石并丢弃 1 个
             max_color = max(range(NUM_GEM_COLORS), key=lambda c: player.gems[c])
             if player.gems[max_color] > 0:
                 player.gems[max_color] -= 1
                 state.gem_bank[max_color] += 1
+                gems_discarded += 1
+
+        return gems_taken, gems_discarded
 
     def _execute_reserve_card(
         self, state: SplendorState, player: PlayerState, action: ReserveCardAction
-    ) -> DevelopmentCard | None:
-        """执行保留卡牌动作"""
+    ) -> tuple[DevelopmentCard | None, bool]:
+        """
+        执行保留卡牌动作
+
+        Returns:
+            (card, got_gold): 保留的卡牌和是否获得金宝石
+        """
         card = None
+        got_gold = False
 
         if action.is_from_deck():
             # 从牌堆顶保留
@@ -506,8 +574,9 @@ class SplendorGame(GameInterface):
             if state.gem_bank[GemColor.GOLD] > 0:
                 player.gems[GemColor.GOLD] += 1
                 state.gem_bank[GemColor.GOLD] -= 1
+                got_gold = True
 
-        return card
+        return card, got_gold
 
     def _execute_buy_card(
         self, state: SplendorState, player: PlayerState, action: BuyCardAction

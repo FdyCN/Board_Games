@@ -20,18 +20,31 @@ model:
 # PPO 算法配置
 algorithm:
   name: "ppo"
-  learning_rate: 0.0003  # 3e-4
+  learning_rate: 0.0001  # 3e-4，降低以稳定训练
   gamma: 0.99  # 折扣因子
   gae_lambda: 0.95  # GAE 参数
-  clip_epsilon: 0.2  # PPO clip 参数
-  value_coef: 0.5  # 价值损失系数
-  entropy_coef: 0.01  # 熵正则化系数
+  clip_epsilon: 0.1  # PPO clip 参数，降低以减少大幅更新
+  value_coef: 0.5  # 价值损失系数，降低以减轻 value loss 的影响
+  entropy_coef: 0.05  # 熵正则化系数，提高以鼓励探索
   max_grad_norm: 0.5  # 梯度裁剪阈值
+  use_value_clip: true  # 启用价值损失裁剪（稳定训练的关键）
+
+  # 稠密奖励系数（PPO 专用）
+  # 注意：这些系数被调整为原来的 2 倍，以增强学习信号并减少回报方差
+  dense_rewards:
+    take_gem: 0.02          # 每个拿取的宝石（原 0.01）
+    discard_gem: -0.10      # 每个丢弃的宝石（惩罚，原 -0.05）
+    reserve_card: 0.04      # 保留卡牌（原 0.02）
+    get_gold: 0.06          # 获得金宝石（原 0.03）
+    buy_card_points: 0.30   # 购买卡牌（每分，原 0.15）
+    buy_card_bonus: 0.10    # 购买卡牌（获得永久宝石加成，原 0.05）
+    noble_visit: 0.6        # 获得贵族（原 0.3）
+    win: 1.0                # 游戏胜利（不变）
 
 # 训练配置
 training:
-  num_iterations: 800  # 总迭代次数
-  episodes_per_iteration: 64  # 每次迭代收集的 episode 数
+  num_iterations: 1000  # 总迭代次数
+  episodes_per_iteration: 128  # 每次迭代收集的 episode 数
   update_epochs: 4  # PPO 更新轮数
   minibatch_size: 256  # 小批次大小
   device: "cpu"  # 设备: "cpu", "cuda", "mps"
@@ -43,7 +56,7 @@ training:
   num_workers: 4  # 并行进程数（1=单进程，>1=多进程）
 
   # Checkpoint 配置
-  checkpoint_dir: "data/checkpoints/splendor_ppo/mlp_medium"
+  checkpoint_dir: "data/checkpoints/splendor_ppo/mlp_medium_opt_ppo_v2"
   checkpoint_interval: 100  # 每 N 次迭代保存检查点
 
   # 日志配置

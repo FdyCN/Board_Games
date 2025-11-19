@@ -48,6 +48,7 @@ class PPO:
         entropy_coef: float = 0.01,
         max_grad_norm: float = 0.5,
         device: str = "cpu",
+        use_value_clip: bool = True,
     ):
         """
         初始化 PPO 训练器
@@ -60,6 +61,7 @@ class PPO:
             entropy_coef: 熵正则化系数
             max_grad_norm: 梯度裁剪阈值
             device: 设备
+            use_value_clip: 是否使用价值损失裁剪（推荐启用以稳定训练）
         """
         self.model = model
         self.device = torch.device(device)
@@ -69,6 +71,7 @@ class PPO:
         self.value_coef = value_coef
         self.entropy_coef = entropy_coef
         self.max_grad_norm = max_grad_norm
+        self.use_value_clip = use_value_clip
 
         # 优化器
         self.optimizer = optim.Adam(model.parameters(), lr=learning_rate)
@@ -176,8 +179,21 @@ class PPO:
         policy_loss = -torch.min(surr1, surr2).mean()
 
         # === 2. 价值损失 ===
-        # 使用 MSE 损失
-        value_loss = 0.5 * ((new_values - returns) ** 2).mean()
+        # 使用 MSE 损失，可选地添加裁剪
+        if self.use_value_clip:
+            # 使用价值裁剪防止大的更新（稳定训练）
+            # 参考: https://arxiv.org/abs/1707.06347 (PPO 原论文)
+            value_pred_clipped = batch.values + torch.clamp(
+                new_values - batch.values,
+                -self.clip_epsilon,
+                self.clip_epsilon,
+            )
+            value_loss_unclipped = ((new_values - returns) ** 2)
+            value_loss_clipped = ((value_pred_clipped - returns) ** 2)
+            value_loss = 0.5 * torch.max(value_loss_unclipped, value_loss_clipped).mean()
+        else:
+            # 标准 MSE 损失
+            value_loss = 0.5 * ((new_values - returns) ** 2).mean()
 
         # === 3. 熵正则化 ===
         # 鼓励探索
@@ -231,6 +247,7 @@ class PPO:
                 "value_coef": self.value_coef,
                 "entropy_coef": self.entropy_coef,
                 "max_grad_norm": self.max_grad_norm,
+                "use_value_clip": self.use_value_clip,
             },
         }
 
@@ -261,6 +278,7 @@ class PPO:
         self.value_coef = hyperparams.get("value_coef", self.value_coef)
         self.entropy_coef = hyperparams.get("entropy_coef", self.entropy_coef)
         self.max_grad_norm = hyperparams.get("max_grad_norm", self.max_grad_norm)
+        self.use_value_clip = hyperparams.get("use_value_clip", self.use_value_clip)
 
         return checkpoint.get("metadata", {})
 

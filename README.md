@@ -69,6 +69,24 @@ training:
 - 例如 8 核 CPU 推荐设置为 4-6 workers
 - 多进程可将训练速度提升 2-4 倍
 
+#### TensorBoard 可视化
+
+训练过程自动记录到 TensorBoard，可以实时监控训练进度：
+
+```bash
+# 启动 TensorBoard
+tensorboard --logdir data/checkpoints/splendor_ppo/mlp_medium/tensorboard
+
+# 在浏览器打开 http://localhost:6006
+```
+
+**监控指标**：
+- **Loss**: policy_loss, value_loss, entropy
+- **Performance**: mean_reward, mean_episode_length
+- **PPO**: kl_divergence, clip_fraction, learning_rate
+- **WinRate**: 各位置胜率 (position_0, position_1, ...)
+- **PositionBias**: win_rate_std, win_rate_range
+
 ## 项目结构
 
 ```
