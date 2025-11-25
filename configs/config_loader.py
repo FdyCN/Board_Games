@@ -33,19 +33,36 @@ class ModelConfig:
 
 @dataclass
 class DenseRewardsConfig:
-    """稠密奖励配置（PPO 专用）
+    """稠密奖励配置（PPO 专用）"""
 
-    注意：这些系数已调整为原来的 2 倍，以增强学习信号并减少回报方差
-    """
+    take_gem: float = 0.01           # 每个拿取的宝石
+    discard_gem: float = -0.05       # 每个丢弃的宝石（惩罚）
+    reserve_card: float = 0.02       # 保留卡牌
+    get_gold: float = 0.03           # 获得金宝石
+    buy_card_points: float = 0.15    # 购买卡牌（每分）
+    buy_card_bonus: float = 0.05     # 购买卡牌（获得永久宝石加成）
+    noble_visit: float = 0.3         # 获得贵族
+    win: float = 1.0                 # 游戏胜利
 
-    take_gem: float = 0.02           # 每个拿取的宝石（原 0.01）
-    discard_gem: float = -0.10       # 每个丢弃的宝石（惩罚，原 -0.05）
-    reserve_card: float = 0.04       # 保留卡牌（原 0.02）
-    get_gold: float = 0.06           # 获得金宝石（原 0.03）
-    buy_card_points: float = 0.30    # 购买卡牌（每分，原 0.15）
-    buy_card_bonus: float = 0.10     # 购买卡牌（获得永久宝石加成，原 0.05）
-    noble_visit: float = 0.6         # 获得贵族（原 0.3）
-    win: float = 1.0                 # 游戏胜利（不变）
+
+@dataclass
+class MCTSSchedulerConfig:
+    """MCTS 调度器配置"""
+
+    enabled: bool = False
+    schedule: list = field(default_factory=list)  # [(iteration, simulations), ...]
+
+
+@dataclass
+class MCTSConfig:
+    """MCTS 配置"""
+
+    enabled: bool = False           # 是否启用 MCTS
+    simulations: int = 100          # 固定模拟次数
+    c_puct: float = 1.5             # UCB 探索常数
+    add_noise: bool = True          # 是否添加 Dirichlet 噪声
+    temperature: float = 1.0        # 采样温度
+    scheduler: MCTSSchedulerConfig = field(default_factory=MCTSSchedulerConfig)
 
 
 @dataclass
@@ -57,11 +74,13 @@ class AlgorithmConfig:
     gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_epsilon: float = 0.2
+    value_clip_epsilon: float = 0.4  # 价值损失裁剪参数（通常比 clip_epsilon 更大）
     value_coef: float = 0.5
     entropy_coef: float = 0.01
     max_grad_norm: float = 0.5
     use_value_clip: bool = True  # 是否使用价值损失裁剪（推荐启用）
     dense_rewards: DenseRewardsConfig = field(default_factory=DenseRewardsConfig)
+    mcts: MCTSConfig = field(default_factory=MCTSConfig)
 
 
 @dataclass
@@ -113,12 +132,31 @@ class Config:
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "Config":
         """从字典创建配置"""
-        # 解析 algorithm 配置，处理嵌套的 dense_rewards
+        # 解析 algorithm 配置，处理嵌套的 dense_rewards 和 mcts
         algorithm_dict = config_dict.get("algorithm", {})
+
+        # 处理 dense_rewards
         dense_rewards_dict = algorithm_dict.pop("dense_rewards", {})
+
+        # 处理 mcts
+        mcts_dict = algorithm_dict.pop("mcts", {})
+        mcts_scheduler_dict = mcts_dict.pop("scheduler", {})
+
         algorithm_config = AlgorithmConfig(**algorithm_dict)
+
         if dense_rewards_dict:
             algorithm_config.dense_rewards = DenseRewardsConfig(**dense_rewards_dict)
+
+        if mcts_dict or mcts_scheduler_dict:
+            mcts_config = MCTSConfig(**mcts_dict)
+            if mcts_scheduler_dict:
+                # 转换 schedule 格式
+                schedule_list = mcts_scheduler_dict.get("schedule", [])
+                # YAML 中 schedule 是列表的列表，需要转换为元组列表
+                if schedule_list and isinstance(schedule_list[0], list):
+                    mcts_scheduler_dict["schedule"] = [tuple(item) for item in schedule_list]
+                mcts_config.scheduler = MCTSSchedulerConfig(**mcts_scheduler_dict)
+            algorithm_config.mcts = mcts_config
 
         return cls(
             game=GameConfig(**config_dict.get("game", {})),
@@ -163,6 +201,8 @@ __all__ = [
     "ModelConfig",
     "AlgorithmConfig",
     "DenseRewardsConfig",
+    "MCTSConfig",
+    "MCTSSchedulerConfig",
     "TrainingConfig",
     "EvaluationConfig",
     "ExperimentConfig",

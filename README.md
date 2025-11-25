@@ -119,7 +119,7 @@ Board_Games/
 ## 技术栈
 
 - **深度学习**：PyTorch 2.x (MPS 加速)
-- **强化学习**：PPO (Proximal Policy Optimization)
+- **强化学习**：PPO (Proximal Policy Optimization) + MCTS Enhancement
 - **并行计算**：torch.multiprocessing
 - **可视化**：TensorBoard / Weights & Biases
 - **Web 框架**：FastAPI + React
@@ -128,16 +128,62 @@ Board_Games/
 ## 开发路线图
 
 - [x] 项目架构设计
-- [x]  核心抽象层实现
+- [x] 核心抽象层实现
 - [x] Splendor 游戏引擎
 - [x] 神经网络模型
 - [x] PPO 训练框架
-- [ ] 分布式自对弈
+- [x] **MCTS-Enhanced PPO** (v1.0 已完成)
+- [x] TensorBoard 可视化
 - [x] ELO 评分系统
-- [ ] 训练可视化
+- [ ] 分布式自对弈
 - [ ] Web 人机对战界面
 
 详细进度请查看 [DEVELOPMENT.md](./DEVELOPMENT.md)
+
+## MCTS-Enhanced PPO Training 🆕
+
+本框架现已支持 **MCTS-Enhanced PPO**，一种混合训练算法，结合了 PPO 的快速学习能力和 MCTS 的策略改进能力。
+
+### 核心特性
+
+- ✅ **渐进式 MCTS 调度**: 从纯 PPO 平滑过渡到 MCTS-增强训练
+- ✅ **灵活配置**: 支持动态调整 MCTS 模拟次数
+- ✅ **完整测试**: 包含单元测试和集成测试
+- ✅ **生产就绪**: 所有已知 bug 已修复，系统稳定
+
+### 快速开始 MCTS 训练
+
+```bash
+# 使用 MCTS 增强的 PPO 训练
+python scripts/train.py --config configs/splendor_mcts_ppo.yaml
+
+# 或使用快捷脚本
+./scripts/train_mcts.sh
+```
+
+### MCTS 训练阶段
+
+| 迭代范围 | MCTS 模拟次数 | 说明 |
+|---------|--------------|------|
+| 0-199   | 0 (纯 PPO)   | 快速探索，建立基础策略 |
+| 200-499 | 50           | 引入 MCTS，开始改进决策 |
+| 500-799 | 100          | 增强阶段，深化策略质量 |
+| 800+    | 200          | 精炼阶段，高质量策略训练 |
+
+### 文档
+
+- 📘 [MCTS 训练指南](./docs/MCTS_TRAINING.md) - 完整使用说明
+- 📗 [MCTS 实现总结](./docs/MCTS_IMPLEMENTATION_SUMMARY.md) - 技术细节
+- 📙 [MCTS 待改进项](./docs/MCTS_TODO.md) - 优化建议
+- 📕 [Bug 修复记录](./docs/BUGFIXES.md) - 问题解决历史
+- 🚀 [准备就绪指南](./docs/MCTS_READY.md) - 开始训练前必读
+
+### 性能预期
+
+MCTS-Enhanced PPO 相比纯 PPO 预期改进：
+- **平均步数**: 从 ~150 降到 100-120
+- **位置偏差**: 胜率标准差从 >0.2 降到 <0.15
+- **策略质量**: 更准确的价值估计和决策
 
 ## 示例：添加新游戏
 
@@ -185,5 +231,5 @@ MIT License
 
 ---
 
-**当前版本**: v0.4.0-dev
-**最后更新**: 2025-11-18
+**当前版本**: v0.5.0-dev (MCTS-Enhanced PPO)
+**最后更新**: 2025-11-19

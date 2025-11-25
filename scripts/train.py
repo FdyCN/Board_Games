@@ -90,6 +90,22 @@ def main():
 
     # 创建训练器
     print("\n创建训练器...")
+
+    # MCTS 配置
+    mcts_kwargs = {}
+    if config.algorithm.mcts.enabled:
+        mcts_kwargs = {
+            "use_mcts": True,
+            "mcts_simulations": config.algorithm.mcts.simulations,
+            "mcts_c_puct": config.algorithm.mcts.c_puct,
+            "mcts_add_noise": config.algorithm.mcts.add_noise,
+            "mcts_temperature": config.algorithm.mcts.temperature,
+        }
+
+        # 添加调度器
+        if config.algorithm.mcts.scheduler.enabled:
+            mcts_kwargs["mcts_scheduler"] = config.algorithm.mcts.scheduler.schedule
+
     trainer = Trainer(
         game=game,
         model=model,
@@ -106,6 +122,8 @@ def main():
         num_workers=config.training.num_workers,
         use_tensorboard=True,
         use_value_clip=config.algorithm.use_value_clip,
+        value_clip_epsilon=config.algorithm.value_clip_epsilon,
+        **mcts_kwargs,  # 添加 MCTS 参数
     )
 
     # 恢复训练（如果指定）

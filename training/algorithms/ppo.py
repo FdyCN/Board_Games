@@ -49,6 +49,7 @@ class PPO:
         max_grad_norm: float = 0.5,
         device: str = "cpu",
         use_value_clip: bool = True,
+        value_clip_epsilon: float = 0.4,
     ):
         """
         初始化 PPO 训练器
@@ -56,18 +57,20 @@ class PPO:
         Args:
             model: Actor-Critic 模型
             learning_rate: 学习率
-            clip_epsilon: PPO clip 参数（通常 0.1-0.3）
+            clip_epsilon: PPO clip 参数（通常 0.1-0.2，用于策略）
             value_coef: 价值损失系数
             entropy_coef: 熵正则化系数
             max_grad_norm: 梯度裁剪阈值
             device: 设备
             use_value_clip: 是否使用价值损失裁剪（推荐启用以稳定训练）
+            value_clip_epsilon: 价值损失裁剪参数（通常 0.3-0.5，比 clip_epsilon 更大）
         """
         self.model = model
         self.device = torch.device(device)
         self.model.to(self.device)
 
         self.clip_epsilon = clip_epsilon
+        self.value_clip_epsilon = value_clip_epsilon
         self.value_coef = value_coef
         self.entropy_coef = entropy_coef
         self.max_grad_norm = max_grad_norm
@@ -181,12 +184,12 @@ class PPO:
         # === 2. 价值损失 ===
         # 使用 MSE 损失，可选地添加裁剪
         if self.use_value_clip:
-            # 使用价值裁剪防止大的更新（稳定训练）
+            # 使用独立的 value_clip_epsilon（通常比 clip_epsilon 更大）
             # 参考: https://arxiv.org/abs/1707.06347 (PPO 原论文)
             value_pred_clipped = batch.values + torch.clamp(
                 new_values - batch.values,
-                -self.clip_epsilon,
-                self.clip_epsilon,
+                -self.value_clip_epsilon,
+                self.value_clip_epsilon,
             )
             value_loss_unclipped = ((new_values - returns) ** 2)
             value_loss_clipped = ((value_pred_clipped - returns) ** 2)
@@ -244,6 +247,7 @@ class PPO:
             "update_count": self.update_count,
             "hyperparameters": {
                 "clip_epsilon": self.clip_epsilon,
+                "value_clip_epsilon": self.value_clip_epsilon,
                 "value_coef": self.value_coef,
                 "entropy_coef": self.entropy_coef,
                 "max_grad_norm": self.max_grad_norm,
@@ -275,6 +279,7 @@ class PPO:
         # 恢复超参数
         hyperparams = checkpoint.get("hyperparameters", {})
         self.clip_epsilon = hyperparams.get("clip_epsilon", self.clip_epsilon)
+        self.value_clip_epsilon = hyperparams.get("value_clip_epsilon", self.value_clip_epsilon)
         self.value_coef = hyperparams.get("value_coef", self.value_coef)
         self.entropy_coef = hyperparams.get("entropy_coef", self.entropy_coef)
         self.max_grad_norm = hyperparams.get("max_grad_norm", self.max_grad_norm)

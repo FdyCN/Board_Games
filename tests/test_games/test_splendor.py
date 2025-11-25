@@ -388,9 +388,9 @@ class TestSplendorDenseRewards:
         action = create_take_three_different([GemColor.RED, GemColor.GREEN, GemColor.BLUE])
         new_state, rewards, done, info = game.step(action)
 
-        # 应该获得 0.02 * 3 = 0.06 的奖励（使用新默认值 2x）
-        assert rewards[0] == pytest.approx(0.06, rel=1e-5)
-        assert info["dense_reward"] == pytest.approx(0.06, rel=1e-5)
+        # 应该获得 0.01 * 3 = 0.03 的奖励
+        assert rewards[0] == pytest.approx(0.03, rel=1e-5)
+        assert info["dense_reward"] == pytest.approx(0.03, rel=1e-5)
 
     def test_take_two_same_gems_reward(self):
         """测试拿 2 个相同颜色宝石的奖励"""
@@ -401,8 +401,8 @@ class TestSplendorDenseRewards:
         action = create_take_two_same(GemColor.RED)
         new_state, rewards, done, info = game.step(action)
 
-        # 应该获得 0.02 * 2 = 0.04 的奖励
-        assert rewards[0] == pytest.approx(0.04, rel=1e-5)
+        # 应该获得 0.01 * 2 = 0.02 的奖励
+        assert rewards[0] == pytest.approx(0.02, rel=1e-5)
 
     def test_reserve_card_reward(self):
         """测试保留卡牌的稠密奖励"""
@@ -415,8 +415,8 @@ class TestSplendorDenseRewards:
 
         new_state, rewards, done, info = game.step(action)
 
-        # 应该获得 0.04 (保留) + 0.06 (金宝石) = 0.10 的奖励
-        assert rewards[0] == pytest.approx(0.10, rel=1e-5)
+        # 应该获得 0.02 (保留) + 0.03 (金宝石) = 0.05 的奖励
+        assert rewards[0] == pytest.approx(0.05, rel=1e-5)
         assert info["got_gold"] is True
 
     def test_reserve_card_without_gold(self):
@@ -432,8 +432,8 @@ class TestSplendorDenseRewards:
 
         new_state, rewards, done, info = game.step(action)
 
-        # 只有保留奖励 0.04
-        assert rewards[0] == pytest.approx(0.04, rel=1e-5)
+        # 只有保留奖励 0.02
+        assert rewards[0] == pytest.approx(0.02, rel=1e-5)
         assert info["got_gold"] is False
 
     def test_buy_card_reward(self):
@@ -460,8 +460,8 @@ class TestSplendorDenseRewards:
         action = BuyCardAction(card_id=target_card.card_id, from_reserved=False)
         new_state, rewards, done, info = game.step(action)
 
-        # 奖励 = 0.30 * points + 0.10 (加成)
-        expected_reward = 0.30 * target_card.points + 0.10
+        # 奖励 = 0.15 * points + 0.05 (加成)
+        expected_reward = 0.15 * target_card.points + 0.05
         assert rewards[0] == pytest.approx(expected_reward, rel=1e-5)
 
     def test_noble_visit_reward(self):
@@ -491,8 +491,8 @@ class TestSplendorDenseRewards:
             action = create_take_three_different([GemColor.RED, GemColor.GREEN, GemColor.BLUE])
             new_state, rewards, done, info = game.step(action)
 
-            # 奖励 = 0.06 (拿宝石) + 0.6 (贵族)
-            expected_reward = 0.06 + 0.6
+            # 奖励 = 0.03 (拿宝石) + 0.3 (贵族)
+            expected_reward = 0.03 + 0.3
             assert rewards[0] == pytest.approx(expected_reward, rel=1e-5)
             assert "noble_visit" in info
 
@@ -516,8 +516,8 @@ class TestSplendorDenseRewards:
         # 丢弃了 2 个宝石
         assert info["gems_discarded"] == 2
 
-        # 奖励 = 0.02 * 3 (拿取) + (-0.10) * 2 (丢弃) = 0.06 - 0.2 = -0.14
-        expected_reward = 0.02 * 3 + (-0.10) * 2
+        # 奖励 = 0.01 * 3 (拿取) + (-0.05) * 2 (丢弃) = 0.03 - 0.1 = -0.07
+        expected_reward = 0.01 * 3 + (-0.05) * 2
         assert rewards[0] == pytest.approx(expected_reward, rel=1e-5)
         assert rewards[0] < 0  # 应该是负奖励
 
@@ -551,8 +551,8 @@ class TestSplendorDenseRewards:
 
         # 游戏应该结束，玩家 3 获得稠密奖励 + 胜利奖励
         assert done
-        # 稠密奖励 0.06 + 胜利奖励 1.0
-        assert rewards[3] == pytest.approx(1.06, rel=1e-5)
+        # 稠密奖励 0.03 + 胜利奖励 1.0
+        assert rewards[3] == pytest.approx(1.03, rel=1e-5)
 
 
 class TestSplendorInfoFields:

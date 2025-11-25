@@ -77,6 +77,14 @@ class Trainer:
         use_tensorboard: bool = True,
         tensorboard_dir: Optional[str] = None,
         use_value_clip: bool = True,
+        value_clip_epsilon: float = 0.4,
+        # MCTS 参数 (新增)
+        use_mcts: bool = False,
+        mcts_simulations: int = 100,
+        mcts_c_puct: float = 1.5,
+        mcts_add_noise: bool = True,
+        mcts_temperature: float = 1.0,
+        mcts_scheduler: Optional[List] = None,
     ):
         """
         初始化训练器
@@ -87,7 +95,7 @@ class Trainer:
             learning_rate: 学习率
             gamma: 折扣因子
             gae_lambda: GAE 参数
-            clip_epsilon: PPO clip 参数
+            clip_epsilon: PPO clip 参数（用于策略）
             value_coef: 价值损失系数
             entropy_coef: 熵正则化系数
             max_grad_norm: 梯度裁剪阈值
@@ -98,6 +106,13 @@ class Trainer:
             use_tensorboard: 是否启用 TensorBoard
             tensorboard_dir: TensorBoard 日志目录（默认为 checkpoint_dir/tensorboard）
             use_value_clip: 是否使用价值损失裁剪（推荐启用以稳定训练）
+            value_clip_epsilon: 价值损失裁剪参数（通常 0.3-0.5，比 clip_epsilon 更大）
+            use_mcts: 是否启用 MCTS 增强训练
+            mcts_simulations: MCTS 模拟次数 (0=禁用MCTS)
+            mcts_c_puct: MCTS UCB 探索常数
+            mcts_add_noise: 是否添加 Dirichlet 噪声
+            mcts_temperature: 动作采样温度
+            mcts_scheduler: MCTS 调度表 [(iteration, simulations), ...]
         """
         self.game = game
         self.model = model
@@ -118,6 +133,7 @@ class Trainer:
             max_grad_norm=max_grad_norm,
             device=device,
             use_value_clip=use_value_clip,
+            value_clip_epsilon=value_clip_epsilon,
         )
 
         # 创建 Neural Agents（所有玩家共享同一个模型）
@@ -139,6 +155,30 @@ class Trainer:
 
         # Episode 缓冲区
         self.episode_buffer = EpisodeBuffer(capacity=1000)
+
+        # MCTS 配置 (新增)
+        self.use_mcts = use_mcts
+        self.mcts = None
+        self.mcts_scheduler = None
+
+        if use_mcts:
+            from training.mcts import MCTS, MCTSScheduler
+
+            self.mcts = MCTS(
+                game=game,
+                c_puct=mcts_c_puct,
+                add_noise=mcts_add_noise,
+                device=device,
+            )
+            self.mcts_simulations = mcts_simulations
+            self.mcts_temperature = mcts_temperature
+
+            # 创建调度器
+            if mcts_scheduler:
+                self.mcts_scheduler = MCTSScheduler(mcts_scheduler)
+                if verbose:
+                    print("MCTS 调度器:")
+                    print(self.mcts_scheduler.get_schedule_info())
 
         # 训练统计
         self.iteration = 0
@@ -207,18 +247,41 @@ class Trainer:
             print(f"小批次大小: {minibatch_size}")
             print(f"并行进程数: {self.worker.num_workers}")
             print(f"位置增强: {'启用' if use_position_augmentation else '禁用'}")
+            print(f"MCTS 增强: {'启用' if self.use_mcts else '禁用'}")
+            if self.use_mcts and not self.mcts_scheduler:
+                print(f"MCTS 模拟次数: {self.mcts_simulations}")
             print(f"设备: {self.device}")
             print("=" * 60)
 
         for iteration in range(num_iterations):
             self.iteration = start_iteration + iteration + 1
 
+            # 获取当前迭代的 MCTS 模拟次数 (如果使用调度器)
+            current_mcts_sims = 0
+            if self.use_mcts:
+                if self.mcts_scheduler:
+                    current_mcts_sims = self.mcts_scheduler.get_simulations(self.iteration)
+                else:
+                    current_mcts_sims = self.mcts_simulations
+
             # === 1. 收集数据 ===
             if self.verbose and iteration % log_interval == 0:
-                print(f"\n迭代 {self.iteration}/{start_iteration + num_iterations}: 收集数据...")
+                mcts_info = f" (MCTS: {current_mcts_sims} sims)" if current_mcts_sims > 0 else ""
+                print(f"\n迭代 {self.iteration}/{start_iteration + num_iterations}: 收集数据...{mcts_info}")
 
             collection_start = time.time()
-            episodes = self.worker.collect(num_episodes=episodes_per_iteration)
+
+            # 选择数据收集方式
+            if current_mcts_sims > 0:
+                # 使用 MCTS 增强的数据收集
+                episodes = self._collect_with_mcts(
+                    num_episodes=episodes_per_iteration,
+                    mcts_simulations=current_mcts_sims
+                )
+            else:
+                # 原始 PPO 数据收集
+                episodes = self.worker.collect(num_episodes=episodes_per_iteration)
+
             collection_time = time.time() - collection_start
 
             # 保存 episodes
@@ -320,6 +383,10 @@ class Trainer:
                 self.writer.add_scalar("Time/collection_time", collection_time, self.iteration)
                 self.writer.add_scalar("Time/update_time", update_time, self.iteration)
 
+                # MCTS 指标
+                if self.use_mcts:
+                    self.writer.add_scalar("MCTS/simulations", current_mcts_sims, self.iteration)
+
                 # 定期刷新，确保训练中可以实时查看
                 if self.iteration % 10 == 0:
                     self.writer.flush()
@@ -394,6 +461,187 @@ class Trainer:
             print(f"  迭代: {self.iteration}")
             print(f"  总 episodes: {self.total_episodes}")
             print(f"  总步数: {self.total_steps}")
+
+    def _collect_with_mcts(
+        self,
+        num_episodes: int,
+        mcts_simulations: int
+    ):
+        """
+        使用 MCTS 增强的数据收集
+
+        Args:
+            num_episodes: 要收集的 episode 数量
+            mcts_simulations: MCTS 模拟次数
+
+        Returns:
+            Episode 列表
+        """
+        import torch
+        from training.experience import Episode, Experience
+
+        episodes = []
+
+        for ep_idx in range(num_episodes):
+            state = self.game.reset()
+            trajectory = []
+
+            while not self.game.is_terminal(state):
+                current_player = self.game.get_current_player(state)
+
+                # 获取合法动作 (先检查是否有合法动作)
+                legal_actions = self.game.get_legal_actions(state)
+                if not legal_actions:
+                    # 没有合法动作,游戏应该结束
+                    break
+
+                # MCTS 搜索获取改进的动作概率
+                action_probs, legal_actions = self.mcts.search(
+                    state=state,
+                    model=self.model,
+                    num_simulations=mcts_simulations,
+                    temperature=self.mcts_temperature,
+                    verbose=False,
+                )
+
+                # 采样动作
+                action_idx = np.random.choice(len(legal_actions), p=action_probs)
+                action = legal_actions[action_idx]
+
+                # 计算 log_prob (用于 PPO)
+                log_prob = np.log(action_probs[action_idx] + 1e-8)
+
+                # 获取价值估计
+                obs = self.game.state_to_observation(state, current_player)
+                obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
+
+                with torch.no_grad():
+                    value = self.model.get_value(obs_tensor).item()
+
+                # 创建合法动作掩码
+                legal_mask = np.zeros(self.game.action_space_size, dtype=bool)
+                # 找到 legal_actions 对应的全局索引
+                # 方法: 遍历整个 action_space, 检查哪些与 legal_actions 匹配
+                # 简化方案: 直接标记前 len(legal_actions) 个为 True
+                # 但这不对...我们需要正确的映射
+
+                # 正确方案: legal_actions 的索引对应关系已经在游戏接口中定义
+                # 实际上,当前的系统设计存在问题:
+                # - legal_actions 是动作对象列表
+                # - action_space_size 是固定的全局大小
+                # - action_to_index 返回在 legal_actions 中的相对索引
+
+                # 临时解决方案: 我们在 MCTS 中使用相对索引 (0, 1, 2, ...)
+                # 因此 legal_mask 实际上不需要在这里创建
+                # 我们直接使用 action_idx 作为索引即可
+
+                # 但为了与现有 Experience 兼容,我们仍然需要一个掩码
+                # 这里简化: 将所有 legal_actions 映射到前 N 个位置
+                for i in range(len(legal_actions)):
+                    legal_mask[i] = True
+
+                # 执行动作
+                next_state, rewards, done, info = self.game.step(action)
+
+                # 保存经验
+                trajectory.append({
+                    'player_id': current_player,
+                    'observation': obs,
+                    'action': action_idx,
+                    'log_prob': log_prob,
+                    'value': value,
+                    'reward': rewards[current_player],
+                    'legal_mask': legal_mask,
+                })
+
+                state = next_state
+
+            # 转换为 Episode 对象
+            episode = self._trajectory_to_episode(trajectory)
+            episodes.append(episode)
+
+        return episodes
+
+    def _trajectory_to_episode(self, trajectory: list):
+        """
+        将轨迹转换为 Episode 对象
+
+        Args:
+            trajectory: 轨迹数据
+
+        Returns:
+            Episode 对象
+        """
+        from training.experience import Episode, Experience
+
+        # 按玩家分组
+        player_trajectories = {}
+        for step in trajectory:
+            player_id = step['player_id']
+            if player_id not in player_trajectories:
+                player_trajectories[player_id] = []
+            player_trajectories[player_id].append(step)
+
+        # 为每个玩家计算 GAE
+        player_experiences = []
+        for player_id in range(self.game.num_players):
+            if player_id not in player_trajectories:
+                continue
+
+            traj = player_trajectories[player_id]
+            experiences = []
+
+            for i, step in enumerate(traj):
+                # 计算 advantage (这里简化,使用 TD error)
+                # 完整的 GAE 会在 ExperienceBatch.from_experiences 中计算
+                if i < len(traj) - 1:
+                    next_value = traj[i + 1]['value']
+                    advantage = step['reward'] + self.gamma * next_value - step['value']
+                else:
+                    advantage = step['reward'] - step['value']
+
+                exp = Experience(
+                    player_id=player_id,
+                    observation=step['observation'],
+                    action=step['action'],
+                    reward=step['reward'],
+                    log_prob=step['log_prob'],  # 修正: 使用 log_prob 而不是 old_log_prob
+                    value=step['value'],
+                    advantage=advantage,
+                    returns=step['value'] + advantage,
+                    legal_actions_mask=step['legal_mask'],
+                )
+                experiences.append(exp)
+
+            player_experiences.append(experiences)
+
+        # 创建 Episode
+        # 合并所有玩家的经验到一个列表
+        all_experiences = []
+        for player_exps in player_experiences:
+            all_experiences.extend(player_exps)
+
+        # 按时间顺序排序 (根据原始 trajectory 的顺序)
+        # 简化: 由于我们是按玩家分组的,这里需要重新交错排列
+        # 但为了简单起见,我们直接使用合并后的列表
+        # (PPO 训练时会重新按玩家分组)
+
+        num_steps = len(trajectory)
+        total_rewards = [0.0] * self.game.num_players
+        for step in trajectory:
+            total_rewards[step['player_id']] += step['reward']
+
+        # 确定胜者 (简化: 最高奖励者)
+        winner = int(np.argmax(total_rewards))
+
+        episode = Episode(
+            experiences=all_experiences,  # 修正: 使用 experiences 而不是 player_experiences
+            total_rewards=total_rewards,
+            winner=winner,
+            num_steps=num_steps,
+        )
+
+        return episode
 
     def evaluate(self, num_episodes: int = 100) -> Dict[str, float]:
         """

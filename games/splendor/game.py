@@ -55,15 +55,15 @@ class SplendorGame(GameInterface):
     支持 2-4 名玩家的宝石商人策略游戏
     """
 
-    # 默认奖励系数（已调整为原来的 2 倍以增强学习信号）
+    # 默认奖励系数
     DEFAULT_REWARDS = {
-        "take_gem": 0.02,
-        "discard_gem": -0.10,
-        "reserve_card": 0.04,
-        "get_gold": 0.06,
-        "buy_card_points": 0.30,
-        "buy_card_bonus": 0.10,
-        "noble_visit": 0.6,
+        "take_gem": 0.01,
+        "discard_gem": -0.05,
+        "reserve_card": 0.02,
+        "get_gold": 0.03,
+        "buy_card_points": 0.15,
+        "buy_card_bonus": 0.05,
+        "noble_visit": 0.3,
         "win": 1.0,
     }
 
