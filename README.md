@@ -37,9 +37,11 @@ Splendor AI 训练经过一轮深入重构，主要改进如下：
 
 ### AlphaZero 训练循环
 
-新增 `scripts/train_alphazero.py`：自对弈用 MCTS 搜索，策略损失 = CE(policy, MCTS 目标)，价值损失 = MSE(value, 终局胜负)。AlphaZero 的价值函数能学到"谁赢"（value_loss 明显下降），而 PPO 的 GAE 价值在对称自对弈中几乎学不会。
+新增 `scripts/train_alphazero.py`：自对弈用 MCTS 搜索，策略损失 = CE(policy, MCTS 目标)，价值损失 = MSE(value, 终局胜负)。AlphaZero 的价值函数能学到"谁赢"（value_loss 从 ~1.0 降到 ~0.17），而 PPO 的 GAE 价值在对称自对弈中几乎学不会。
 
-### 当前结果（3 人对局）
+> ⚠️ 注：AlphaZero 的策略网络需要**数百次模拟 + 上千次迭代**才能反超 PPO。本仓库默认配置（50 sims、16 局/迭代）跑 500 迭代后，价值函数学到了，但策略网络仍未学会高效买卡，对弈会打到回合上限；如需完整 AlphaZero，需要更强的算力（数百 sims + 数千迭代，参考实现用 numba 加速）。当前**PPO 仍是可用效果最好的模型**。
+
+### 当前结果（3 人对局，PPO）
 
 | 指标 | 数值 |
 |---|---|
