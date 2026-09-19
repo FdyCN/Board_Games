@@ -43,6 +43,7 @@ class ExperienceBatch:
         returns: torch.Tensor,
         values: torch.Tensor,
         legal_actions_masks: torch.Tensor | None = None,
+        outcomes: torch.Tensor | None = None,
     ):
         self.observations = observations
         self.actions = actions
@@ -51,6 +52,7 @@ class ExperienceBatch:
         self.returns = returns
         self.values = values
         self.legal_actions_masks = legal_actions_masks
+        self.outcomes = outcomes
 
         # 验证形状一致性
         batch_size = len(observations)
@@ -61,6 +63,8 @@ class ExperienceBatch:
         assert len(values) == batch_size
         if legal_actions_masks is not None:
             assert len(legal_actions_masks) == batch_size
+        if outcomes is not None:
+            assert len(outcomes) == batch_size
 
     @property
     def batch_size(self) -> int:
@@ -123,6 +127,12 @@ class ExperienceBatch:
         if experiences[0].legal_actions_mask is not None:
             legal_actions_masks = np.stack([exp.legal_actions_mask for exp in experiences])
 
+        # 提取终局胜负标签（辅助任务）
+        # 只有当所有经验都有 outcome 标签时才启用（避免 None 混入变成 nan）
+        outcomes = None
+        if all(exp.outcome is not None for exp in experiences):
+            outcomes = np.array([exp.outcome for exp in experiences], dtype=np.float32)
+
         # 归一化优势函数
         if normalize_advantages and len(advantages) > 1:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
@@ -132,6 +142,9 @@ class ExperienceBatch:
         legal_masks_tensor = None
         if legal_actions_masks is not None:
             legal_masks_tensor = torch.from_numpy(legal_actions_masks).float().to(device_obj)
+        outcomes_tensor = None
+        if outcomes is not None:
+            outcomes_tensor = torch.from_numpy(outcomes).float().to(device_obj)
 
         return cls(
             observations=torch.from_numpy(observations).float().to(device_obj),
@@ -141,6 +154,7 @@ class ExperienceBatch:
             returns=torch.from_numpy(returns).float().to(device_obj),
             values=torch.from_numpy(values).float().to(device_obj),
             legal_actions_masks=legal_masks_tensor,
+            outcomes=outcomes_tensor,
         )
 
     def iterate_minibatches(
@@ -172,6 +186,7 @@ class ExperienceBatch:
                 returns=self.returns[batch_indices],
                 values=self.values[batch_indices],
                 legal_actions_masks=self.legal_actions_masks[batch_indices] if self.legal_actions_masks is not None else None,
+                outcomes=self.outcomes[batch_indices] if self.outcomes is not None else None,
             )
 
     def to(self, device: str) -> "ExperienceBatch":
@@ -193,6 +208,7 @@ class ExperienceBatch:
             returns=self.returns.to(device_obj),
             values=self.values.to(device_obj),
             legal_actions_masks=self.legal_actions_masks.to(device_obj) if self.legal_actions_masks is not None else None,
+            outcomes=self.outcomes.to(device_obj) if self.outcomes is not None else None,
         )
 
 
@@ -202,10 +218,15 @@ def compute_advantages_for_episode(
     gae_lambda: float = 0.95,
 ) -> None:
     """
-    为 Episode 中的所有经验计算优势函数和回报
+    为 Episode 中的每个玩家分别计算优势函数和回报（GAE）
 
-    使用 GAE (Generalized Advantage Estimation) 计算优势函数。
-    直接修改 episode.experiences 中的 advantage 和 returns 字段。
+    多人自对弈中，所有玩家共享同一个模型，但每个玩家拥有**自己的时序轨迹**。
+    因此必须按 `player_id` 分组，对每个玩家各自的轨迹独立计算 GAE，并把终局
+    奖励（零和）注入到每个玩家自己的最后一步。
+
+    之前的实现直接把 4 个玩家交错的 experiences 当作单一轨迹计算 GAE，
+    导致 P0 这一步的 next_value 变成了 P1 的价值估计，advantage/return 全部
+    变成噪声。这是训练崩溃的根本原因之一。
 
     Args:
         episode: Episode 对象
@@ -221,28 +242,55 @@ def compute_advantages_for_episode(
     if not experiences:
         return
 
-    # 提取数据
-    rewards = [exp.reward for exp in experiences]
-    values = [exp.value for exp in experiences]
-    dones = [exp.done for exp in experiences]
+    num_players = len(episode.total_rewards)
+    winner = episode.winner
 
-    # 计算 next_values
-    next_values = values[1:] + [0.0]  # 最后一个 next_value 为 0
+    # 终局零和奖励：胜者 +1，其余玩家 -1/(n-1)
+    # 这样总奖励为 0，避免共享模型学到"所有人都刷分"的非竞争漂移。
+    terminal_rewards: dict[int, float] = {}
+    if winner >= 0 and num_players > 0:
+        win_reward = 1.0
+        for p in range(num_players):
+            if p == winner:
+                terminal_rewards[p] = win_reward
+            elif num_players > 1:
+                terminal_rewards[p] = -win_reward / (num_players - 1)
+            else:
+                terminal_rewards[p] = 0.0
 
-    # 使用 GAE 计算优势和回报
-    advantages, returns = compute_gae(
-        rewards=rewards,
-        values=values,
-        next_values=next_values,
-        dones=dones,
-        gamma=gamma,
-        gae_lambda=gae_lambda,
-    )
+    # 按玩家分组（保持每个玩家内部的时间顺序）
+    by_player: dict[int, list] = {}
+    for exp in experiences:
+        by_player.setdefault(exp.player_id, []).append(exp)
 
-    # 填充到经验中
-    for exp, adv, ret in zip(experiences, advantages, returns):
-        exp.advantage = adv
-        exp.returns = ret
+    for player_id, traj in by_player.items():
+        if not traj:
+            continue
+
+        rewards = [exp.reward for exp in traj]
+        values = [exp.value for exp in traj]
+
+        # 终局奖励注入到该玩家自己的最后一步
+        rewards[-1] = rewards[-1] + terminal_rewards.get(player_id, 0.0)
+
+        # 每个玩家轨迹的最后一步，即该玩家视角下的"终局"（next_value = 0）
+        dones = [False] * len(traj)
+        dones[-1] = True
+        next_values = values[1:] + [0.0]
+
+        advantages, returns = compute_gae(
+            rewards=rewards,
+            values=values,
+            next_values=next_values,
+            dones=dones,
+            gamma=gamma,
+            gae_lambda=gae_lambda,
+        )
+
+        # 填充到该玩家的经验中
+        for exp, adv, ret in zip(traj, advantages, returns):
+            exp.advantage = adv
+            exp.returns = ret
 
 
 def split_episodes_by_player(

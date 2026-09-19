@@ -9,6 +9,16 @@ import numpy as np
 from games.splendor.constants import CardTier, GemColor, NUM_GEM_COLORS, WINNING_SCORE
 from games.splendor.state import SplendorState
 
+# ===== 观察向量中"逐卡特征"区段的索引（供模型抽取，实现共享卡评估器） =====
+# 观察布局详见下方 docstring：
+#   保留卡（当前玩家 3 张）在 [15:60]，每张 15 维
+#   公开卡牌（12 张明牌）在 [105:285]，每张 15 维
+CARD_FEAT_DIM = 15
+RESERVED_CARDS_START = 15
+RESERVED_CARDS_END = 60
+OPEN_CARDS_START = 105
+OPEN_CARDS_END = 285
+
 
 class SplendorEncoder:
     """

@@ -13,6 +13,14 @@ from models.encoders.mlp_encoder import MLPEncoder
 from models.encoders.attention_encoder import AttentionEncoder
 from models.heads.policy_head import PolicyHead
 from models.heads.value_head import ValueHead
+from models.heads.outcome_head import OutcomeHead
+from games.splendor.encoder import (
+    CARD_FEAT_DIM,
+    RESERVED_CARDS_START,
+    RESERVED_CARDS_END,
+    OPEN_CARDS_START,
+    OPEN_CARDS_END,
+)
 
 
 class ActorCritic(nn.Module):
@@ -72,10 +80,15 @@ class ActorCritic(nn.Module):
         else:
             raise ValueError(f"未知的编码器类型: {encoder_type}")
 
+        # 逐卡特征编码器（共享卡评估器用）：把每张卡的 15 维特征映射到 card_dim
+        self.card_dim = head_intermediate_dim
+        self.card_encoder = nn.Linear(CARD_FEAT_DIM, self.card_dim)
+
         # 创建策略头（Actor）
         self.policy_head = PolicyHead(
             hidden_dim=hidden_dim,
             action_size=action_size,
+            card_dim=self.card_dim,
             intermediate_dim=head_intermediate_dim,
             dropout=dropout,
         )
@@ -86,6 +99,30 @@ class ActorCritic(nn.Module):
             intermediate_dim=head_intermediate_dim,
             dropout=dropout,
         )
+
+        # 创建终局胜负预测头（辅助任务，用于让编码器学到"谁占优"特征）
+        self.outcome_head = OutcomeHead(
+            hidden_dim=hidden_dim,
+            intermediate_dim=head_intermediate_dim,
+            dropout=dropout,
+        )
+
+    def _encode_cards(self, obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        从观察向量中抽取逐卡特征并编码。
+
+        Args:
+            obs: 观察向量 (batch_size, obs_dim)
+
+        Returns:
+            open_card_embeds: (batch_size, 12, card_dim)
+            reserved_card_embeds: (batch_size, 3, card_dim)
+        """
+        reserved = obs[:, RESERVED_CARDS_START:RESERVED_CARDS_END].reshape(-1, 3, CARD_FEAT_DIM)
+        open_cards = obs[:, OPEN_CARDS_START:OPEN_CARDS_END].reshape(-1, 12, CARD_FEAT_DIM)
+        open_embeds = self.card_encoder(open_cards)
+        reserved_embeds = self.card_encoder(reserved)
+        return open_embeds, reserved_embeds
 
     def forward(
         self,
@@ -104,11 +141,12 @@ class ActorCritic(nn.Module):
             logits: 动作 logits (batch_size, action_size)
             values: 状态价值 (batch_size, 1)
         """
-        # 编码观察
+        # 编码观察（全局特征 + 逐卡特征）
         features = self.encoder(obs)
+        open_embeds, reserved_embeds = self._encode_cards(obs)
 
         # 获取策略和价值
-        logits = self.policy_head(features, legal_actions_mask)
+        logits = self.policy_head(features, open_embeds, reserved_embeds, legal_actions_mask)
         values = self.value_head(features)
 
         return logits, values
@@ -134,10 +172,11 @@ class ActorCritic(nn.Module):
         """
         # 编码观察
         features = self.encoder(obs)
+        open_embeds, reserved_embeds = self._encode_cards(obs)
 
         # 采样动作
         actions, log_probs = self.policy_head.sample_action(
-            features, legal_actions_mask, deterministic
+            features, open_embeds, reserved_embeds, legal_actions_mask, deterministic
         )
 
         # 获取价值
@@ -159,6 +198,23 @@ class ActorCritic(nn.Module):
         values = self.value_head(features)
         return values
 
+    def get_outcome_prob(self, obs: torch.Tensor) -> torch.Tensor:
+        """
+        获取终局胜负概率 P(当前玩家获胜) ∈ [0,1]
+
+        用于 AlphaZero 风格的 value（胜率作为状态价值），替代噪声很大的
+        PPO return 价值，从而让 advantage 直接反映"这一步是否提升胜率"。
+
+        Args:
+            obs: 观察向量 (batch_size, obs_dim)
+
+        Returns:
+            probs: 胜率 (batch_size, 1)
+        """
+        features = self.encoder(obs)
+        logits = self.outcome_head(features)
+        return torch.sigmoid(logits)
+
     def get_action_probs(
         self,
         obs: torch.Tensor,
@@ -175,7 +231,10 @@ class ActorCritic(nn.Module):
             probs: 动作概率 (batch_size, action_size)
         """
         features = self.encoder(obs)
-        probs = self.policy_head.get_action_probs(features, legal_actions_mask)
+        open_embeds, reserved_embeds = self._encode_cards(obs)
+        probs = self.policy_head.get_action_probs(
+            features, open_embeds, reserved_embeds, legal_actions_mask
+        )
         return probs
 
     def evaluate_actions(
@@ -183,7 +242,7 @@ class ActorCritic(nn.Module):
         obs: torch.Tensor,
         actions: torch.Tensor,
         legal_actions_mask: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         评估给定动作（用于 PPO 更新）
 
@@ -196,13 +255,16 @@ class ActorCritic(nn.Module):
             values: 状态价值 (batch_size, 1)
             log_probs: 动作的对数概率 (batch_size,)
             entropy: 策略熵 (batch_size,)
+            outcome_logits: 终局胜负 logits (batch_size, 1)
         """
         # 编码观察
         features = self.encoder(obs)
+        open_embeds, reserved_embeds = self._encode_cards(obs)
 
-        # 获取 logits 和价值
-        logits = self.policy_head(features, legal_actions_mask)
+        # 获取 logits、价值和终局胜负 logits
+        logits = self.policy_head(features, open_embeds, reserved_embeds, legal_actions_mask)
         values = self.value_head(features)
+        outcome_logits = self.outcome_head(features)
 
         # 计算概率分布
         probs = torch.softmax(logits, dim=-1)
@@ -213,7 +275,7 @@ class ActorCritic(nn.Module):
         # 计算熵（用于鼓励探索）
         entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=-1)
 
-        return values, log_probs, entropy
+        return values, log_probs, entropy, outcome_logits
 
     def count_parameters(self) -> dict[str, int]:
         """
@@ -225,12 +287,14 @@ class ActorCritic(nn.Module):
         encoder_params = sum(p.numel() for p in self.encoder.parameters())
         policy_params = sum(p.numel() for p in self.policy_head.parameters())
         value_params = sum(p.numel() for p in self.value_head.parameters())
-        total_params = encoder_params + policy_params + value_params
+        outcome_params = sum(p.numel() for p in self.outcome_head.parameters())
+        total_params = encoder_params + policy_params + value_params + outcome_params
 
         return {
             "encoder": encoder_params,
             "policy_head": policy_params,
             "value_head": value_params,
+            "outcome_head": outcome_params,
             "total": total_params,
         }
 

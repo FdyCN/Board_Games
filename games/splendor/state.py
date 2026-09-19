@@ -36,6 +36,16 @@ class PlayerState:
     reserved_cards: list[DevelopmentCard] = field(default_factory=list)
     nobles: list[NobleTile] = field(default_factory=list)
 
+    def clone(self) -> "PlayerState":
+        """快速浅拷贝：卡牌/贵族是 frozen 不可变对象，可安全共享引用"""
+        return PlayerState(
+            player_id=self.player_id,
+            gems=list(self.gems),
+            cards=list(self.cards),
+            reserved_cards=list(self.reserved_cards),
+            nobles=list(self.nobles),
+        )
+
     def total_gems(self) -> int:
         """总宝石数"""
         return sum(self.gems)
@@ -109,6 +119,23 @@ class SplendorState:
     current_player: int = 0
     turn_number: int = 0
     phase: GamePhase = GamePhase.PLAYING
+    # 最后一轮剩余需要行动的玩家数（进入 FINAL_ROUND 时设置，减到 0 游戏结束）
+    final_round_turns_remaining: int | None = None
+
+    def clone(self) -> "SplendorState":
+        """快速浅拷贝：卡牌/贵族是 frozen 不可变对象，可安全共享引用"""
+        return SplendorState(
+            num_players=self.num_players,
+            players=[p.clone() for p in self.players],
+            gem_bank=list(self.gem_bank),
+            nobles=list(self.nobles),
+            open_cards={tier: list(cards) for tier, cards in self.open_cards.items()},
+            decks={tier: list(cards) for tier, cards in self.decks.items()},
+            current_player=self.current_player,
+            turn_number=self.turn_number,
+            phase=self.phase,
+            final_round_turns_remaining=self.final_round_turns_remaining,
+        )
 
     def get_current_player_state(self) -> PlayerState:
         """获取当前玩家状态"""

@@ -64,6 +64,7 @@ def main():
         "buy_card_bonus": config.algorithm.dense_rewards.buy_card_bonus,
         "noble_visit": config.algorithm.dense_rewards.noble_visit,
         "win": config.algorithm.dense_rewards.win,
+        "step_penalty": config.algorithm.dense_rewards.step_penalty,
     }
     game = create_game(
         config.game.name,
@@ -123,6 +124,7 @@ def main():
         use_tensorboard=True,
         use_value_clip=config.algorithm.use_value_clip,
         value_clip_epsilon=config.algorithm.value_clip_epsilon,
+        outcome_coef=config.algorithm.outcome_coef,
         **mcts_kwargs,  # 添加 MCTS 参数
     )
 

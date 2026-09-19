@@ -148,12 +148,12 @@ class Arena:
             # 编码状态
             observation = self.game.state_to_observation(state, current_player)
             legal_action_indices = [
-                self.game.action_to_index(action, legal_actions) for action in legal_actions
+                self.game.action_to_index(action, state) for action in legal_actions
             ]
 
             # Agent 选择动作
             action_idx, info = agent.select_action(observation, legal_action_indices)
-            action = legal_actions[legal_action_indices.index(action_idx)]
+            action = self.game.index_to_action(action_idx, state)
 
             if verbose:
                 print(

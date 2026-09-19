@@ -115,7 +115,7 @@ class TestPolicyHead:
         mask = torch.zeros(4, 50, dtype=torch.bool)
         mask[:, :10] = True
 
-        logits = policy(features, mask)
+        logits = policy(features, legal_actions_mask=mask)
         assert logits.shape == (4, 50)
 
         # 检查非法动作的 logits 为 -inf
@@ -143,7 +143,7 @@ class TestPolicyHead:
         mask = torch.zeros(4, 50, dtype=torch.bool)
         mask[:, :10] = True
 
-        probs = policy.get_action_probs(features, mask)
+        probs = policy.get_action_probs(features, legal_actions_mask=mask)
 
         # 非法动作的概率应为 0
         assert torch.allclose(probs[:, 10:], torch.zeros(4, 40))
@@ -281,11 +281,12 @@ class TestActorCritic:
         obs = torch.randn(4, 384)
         actions = torch.randint(0, 50, (4,))
 
-        values, log_probs, entropy = model.evaluate_actions(obs, actions)
+        values, log_probs, entropy, outcome_logits = model.evaluate_actions(obs, actions)
 
         assert values.shape == (4, 1)
         assert log_probs.shape == (4,)
         assert entropy.shape == (4,)
+        assert outcome_logits.shape == (4, 1)
 
     @pytest.mark.parametrize("encoder_type", ["mlp", "attention"])
     def test_count_parameters(self, encoder_type):
@@ -296,6 +297,7 @@ class TestActorCritic:
         assert "encoder" in param_counts
         assert "policy_head" in param_counts
         assert "value_head" in param_counts
+        assert "outcome_head" in param_counts
         assert "total" in param_counts
 
         # 总参数量应该等于各部分之和
@@ -303,6 +305,7 @@ class TestActorCritic:
             param_counts["encoder"]
             + param_counts["policy_head"]
             + param_counts["value_head"]
+            + param_counts["outcome_head"]
         )
 
         # 参数量应该在合理范围内（100K - 1M）
@@ -353,7 +356,7 @@ class TestModelFactory:
         model = create_splendor_model(encoder_type="mlp", config="medium")
         assert isinstance(model, ActorCritic)
         assert model.obs_dim == 384
-        assert model.action_size == 50
+        assert model.action_size == 46
 
     @pytest.mark.parametrize("encoder_type", ["mlp", "attention"])
     @pytest.mark.parametrize("config", ["small", "medium", "large"])
@@ -375,7 +378,7 @@ class TestModelFactory:
 
         assert info["encoder_type"] == "mlp"
         assert info["obs_dim"] == 384
-        assert info["action_size"] == 50
+        assert info["action_size"] == 46
 
 
 if __name__ == "__main__":

@@ -120,7 +120,7 @@ def create_splendor_model(
     """
     return create_model(
         obs_dim=384,
-        action_size=50,
+        action_size=46,  # 规范动作空间大小（见 games/splendor/game.py 的 ACTION_SPACE_SIZE）
         encoder_type=encoder_type,
         config=config,
     )

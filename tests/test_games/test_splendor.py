@@ -40,7 +40,7 @@ class TestSplendorGameInit:
         game = SplendorGame(num_players=4)
         assert game.num_players == 4
         assert game.observation_shape == (384,)
-        assert game.action_space_size == 50
+        assert game.action_space_size == 46
 
 
 class TestSplendorGameReset:
@@ -540,10 +540,10 @@ class TestSplendorDenseRewards:
             )
             player.cards.append(card)
 
-        # 进入最后一轮
+        # 进入最后一轮，且玩家 3 已是本轮最后一位行动者（行动后游戏结束）
         state.phase = GamePhase.FINAL_ROUND
-        # 设置为最后一个玩家（这样游戏会结束）
         state.current_player = 3
+        state.final_round_turns_remaining = 0
 
         # 执行动作
         action = create_take_three_different([GemColor.RED, GemColor.GREEN, GemColor.BLUE])

@@ -78,6 +78,7 @@ class Trainer:
         tensorboard_dir: Optional[str] = None,
         use_value_clip: bool = True,
         value_clip_epsilon: float = 0.4,
+        outcome_coef: float = 1.0,
         # MCTS 参数 (新增)
         use_mcts: bool = False,
         mcts_simulations: int = 100,
@@ -107,6 +108,7 @@ class Trainer:
             tensorboard_dir: TensorBoard 日志目录（默认为 checkpoint_dir/tensorboard）
             use_value_clip: 是否使用价值损失裁剪（推荐启用以稳定训练）
             value_clip_epsilon: 价值损失裁剪参数（通常 0.3-0.5，比 clip_epsilon 更大）
+            outcome_coef: 终局胜负辅助任务损失系数
             use_mcts: 是否启用 MCTS 增强训练
             mcts_simulations: MCTS 模拟次数 (0=禁用MCTS)
             mcts_c_puct: MCTS UCB 探索常数
@@ -134,6 +136,7 @@ class Trainer:
             device=device,
             use_value_clip=use_value_clip,
             value_clip_epsilon=value_clip_epsilon,
+            outcome_coef=outcome_coef,
         )
 
         # 创建 Neural Agents（所有玩家共享同一个模型）
@@ -504,141 +507,96 @@ class Trainer:
                     verbose=False,
                 )
 
-                # 采样动作
+                # 采样动作（用 MCTS 改进后的访问分布做探索）
                 action_idx = np.random.choice(len(legal_actions), p=action_probs)
                 action = legal_actions[action_idx]
+                canonical_idx = self.game.action_to_index(action, state)
 
-                # 计算 log_prob (用于 PPO)
-                log_prob = np.log(action_probs[action_idx] + 1e-8)
-
-                # 获取价值估计
+                # 用策略网络（被训练的那个）计算 log_prob 和价值。
+                # 注意：old_log_prob 必须来自策略网络，而不是 MCTS 访问概率，
+                # 否则 PPO 的重要性采样比率 ratio 会算错（比较的是两种不同分布）。
                 obs = self.game.state_to_observation(state, current_player)
                 obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
 
-                with torch.no_grad():
-                    value = self.model.get_value(obs_tensor).item()
-
-                # 创建合法动作掩码
                 legal_mask = np.zeros(self.game.action_space_size, dtype=bool)
-                # 找到 legal_actions 对应的全局索引
-                # 方法: 遍历整个 action_space, 检查哪些与 legal_actions 匹配
-                # 简化方案: 直接标记前 len(legal_actions) 个为 True
-                # 但这不对...我们需要正确的映射
+                for a in legal_actions:
+                    legal_mask[self.game.action_to_index(a, state)] = True
+                legal_mask_tensor = torch.BoolTensor(legal_mask).unsqueeze(0).to(self.device)
 
-                # 正确方案: legal_actions 的索引对应关系已经在游戏接口中定义
-                # 实际上,当前的系统设计存在问题:
-                # - legal_actions 是动作对象列表
-                # - action_space_size 是固定的全局大小
-                # - action_to_index 返回在 legal_actions 中的相对索引
-
-                # 临时解决方案: 我们在 MCTS 中使用相对索引 (0, 1, 2, ...)
-                # 因此 legal_mask 实际上不需要在这里创建
-                # 我们直接使用 action_idx 作为索引即可
-
-                # 但为了与现有 Experience 兼容,我们仍然需要一个掩码
-                # 这里简化: 将所有 legal_actions 映射到前 N 个位置
-                for i in range(len(legal_actions)):
-                    legal_mask[i] = True
+                with torch.no_grad():
+                    logits, value = self.model(obs_tensor, legal_mask_tensor)
+                    probs = torch.softmax(logits, dim=-1)
+                    log_prob = torch.log(probs[0, canonical_idx] + 1e-8).item()
+                    value = value.item()
 
                 # 执行动作
                 next_state, rewards, done, info = self.game.step(action)
 
                 # 保存经验
+                # 只保存稠密奖励；终局奖励在 _trajectory_to_episode 中按玩家注入
                 trajectory.append({
                     'player_id': current_player,
                     'observation': obs,
-                    'action': action_idx,
+                    'action': canonical_idx,
                     'log_prob': log_prob,
                     'value': value,
-                    'reward': rewards[current_player],
+                    'reward': info.get("dense_reward", rewards[current_player]),
                     'legal_mask': legal_mask,
                 })
 
                 state = next_state
 
+            # 从真实终局状态确定胜者和终局奖励
+            winner = self.game.get_winner(state) if self.game.is_terminal(state) else -1
+            total_rewards = self.game.get_final_rewards(state)
+
             # 转换为 Episode 对象
-            episode = self._trajectory_to_episode(trajectory)
+            episode = self._trajectory_to_episode(
+                trajectory, winner=winner, total_rewards=total_rewards
+            )
             episodes.append(episode)
 
         return episodes
 
-    def _trajectory_to_episode(self, trajectory: list):
+    def _trajectory_to_episode(self, trajectory: list, winner: int, total_rewards: list):
         """
         将轨迹转换为 Episode 对象
 
         Args:
             trajectory: 轨迹数据
+            winner: 真实终局胜者（来自游戏状态）
+            total_rewards: 每个玩家的终局奖励（用于记录/统计）
 
         Returns:
             Episode 对象
         """
-        from training.experience import Episode, Experience
+        from training.experience import Episode, Experience, compute_advantages_for_episode
 
-        # 按玩家分组
-        player_trajectories = {}
+        # 按时间顺序展开所有玩家的经验（保持交错顺序，与标准路径一致）
+        experiences = []
         for step in trajectory:
-            player_id = step['player_id']
-            if player_id not in player_trajectories:
-                player_trajectories[player_id] = []
-            player_trajectories[player_id].append(step)
-
-        # 为每个玩家计算 GAE
-        player_experiences = []
-        for player_id in range(self.game.num_players):
-            if player_id not in player_trajectories:
-                continue
-
-            traj = player_trajectories[player_id]
-            experiences = []
-
-            for i, step in enumerate(traj):
-                # 计算 advantage (这里简化,使用 TD error)
-                # 完整的 GAE 会在 ExperienceBatch.from_experiences 中计算
-                if i < len(traj) - 1:
-                    next_value = traj[i + 1]['value']
-                    advantage = step['reward'] + self.gamma * next_value - step['value']
-                else:
-                    advantage = step['reward'] - step['value']
-
-                exp = Experience(
-                    player_id=player_id,
-                    observation=step['observation'],
-                    action=step['action'],
-                    reward=step['reward'],
-                    log_prob=step['log_prob'],  # 修正: 使用 log_prob 而不是 old_log_prob
-                    value=step['value'],
-                    advantage=advantage,
-                    returns=step['value'] + advantage,
-                    legal_actions_mask=step['legal_mask'],
-                )
-                experiences.append(exp)
-
-            player_experiences.append(experiences)
-
-        # 创建 Episode
-        # 合并所有玩家的经验到一个列表
-        all_experiences = []
-        for player_exps in player_experiences:
-            all_experiences.extend(player_exps)
-
-        # 按时间顺序排序 (根据原始 trajectory 的顺序)
-        # 简化: 由于我们是按玩家分组的,这里需要重新交错排列
-        # 但为了简单起见,我们直接使用合并后的列表
-        # (PPO 训练时会重新按玩家分组)
-
-        num_steps = len(trajectory)
-        total_rewards = [0.0] * self.game.num_players
-        for step in trajectory:
-            total_rewards[step['player_id']] += step['reward']
-
-        # 确定胜者 (简化: 最高奖励者)
-        winner = int(np.argmax(total_rewards))
+            exp = Experience(
+                player_id=step['player_id'],
+                observation=step['observation'],
+                action=step['action'],
+                reward=step['reward'],
+                log_prob=step['log_prob'],
+                value=step['value'],
+                legal_actions_mask=step['legal_mask'],
+                outcome=1.0 if (winner >= 0 and step['player_id'] == winner) else 0.0,
+            )
+            experiences.append(exp)
 
         episode = Episode(
-            experiences=all_experiences,  # 修正: 使用 experiences 而不是 player_experiences
+            experiences=experiences,
             total_rewards=total_rewards,
             winner=winner,
-            num_steps=num_steps,
+            num_steps=len(trajectory),
+        )
+
+        # 复用统一的按玩家 GAE 计算 + 终局零和奖励注入
+        compute_advantages_for_episode(
+            episode, gamma=self.gamma, gae_lambda=self.gae_lambda
         )
 
         return episode

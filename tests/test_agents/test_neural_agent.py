@@ -256,7 +256,7 @@ class TestNeuralAgentIntegration:
             obs = game.state_to_observation(state, current_player)
             legal_actions_objects = game.get_legal_actions(state)
             legal_actions = [
-                game.action_to_index(a, legal_actions_objects) for a in legal_actions_objects
+                game.action_to_index(a, state) for a in legal_actions_objects
             ]
 
             # Agent 选择动作
@@ -273,7 +273,7 @@ class TestNeuralAgentIntegration:
             assert "value" in info
 
             # 执行动作
-            action = game.index_to_action(action_idx, legal_actions_objects)
+            action = game.index_to_action(action_idx, state)
             state, rewards, done, game_info = game.step(action)
 
             if done:

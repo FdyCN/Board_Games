@@ -75,9 +75,9 @@ def collect_episode(
             done = True
             break
 
-        # 转换为索引
+        # 转换为规范动作索引（固定槽位）
         legal_action_indices = [
-            game.action_to_index(action, legal_actions) for action in legal_actions
+            game.action_to_index(action, state) for action in legal_actions
         ]
 
         # 创建合法动作掩码 (用于保存到经验中)
@@ -90,17 +90,20 @@ def collect_episode(
         )
 
         # 转换回动作对象
-        action = game.index_to_action(action_idx, legal_actions)
+        action = game.index_to_action(action_idx, state)
 
         # 执行动作
         next_state, rewards, done, game_info = game.step(action)
 
         # 创建经验
+        # 注意：这里只保存"稠密奖励"（不含终局胜利奖励）。
+        # 终局胜利/失败奖励在 compute_advantages_for_episode 中按玩家注入，
+        # 避免"胜利奖励只落在最后一位行动玩家身上"而丢失。
         experience = Experience(
             player_id=current_player,
             observation=observation,
             action=action_idx,
-            reward=rewards[current_player],
+            reward=game_info.get("dense_reward", rewards[current_player]),
             next_observation=game.state_to_observation(next_state, current_player)
             if not done
             else None,
@@ -138,6 +141,11 @@ def collect_episode(
     if verbose:
         print(f"游戏结束! 步数: {step_count}, 获胜者: {winner}, 耗时: {elapsed_time:.2f}s")
         print(f"最终奖励: {final_rewards}")
+
+    # 填充终局胜负标签（辅助任务用）：本玩家获胜=1，否则=0
+    # winner=-1（平局/死锁）时，所有玩家都视为"未获胜"（0）。
+    for exp in experiences:
+        exp.outcome = 1.0 if (winner >= 0 and exp.player_id == winner) else 0.0
 
     # 创建 Episode
     episode = Episode(
@@ -450,6 +458,10 @@ class SelfPlayWorker:
         self._game_kwargs = {"num_players": game.num_players}
         if hasattr(game, "seed"):
             self._game_kwargs["seed"] = game.seed
+        # 关键：多进程子进程会重新创建游戏实例，必须把 reward_config 一并传下去，
+        # 否则子进程会退回 DEFAULT_REWARDS，导致自定义奖励/稠密奖励系数失效。
+        if hasattr(game, "_rewards"):
+            self._game_kwargs["reward_config"] = dict(game._rewards)
 
     def collect_one(self) -> Episode:
         """

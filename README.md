@@ -11,6 +11,42 @@
 - **实时可视化**：【TBD】训练监控、对局回放、Web 人机对战界面
 - **灵活配置**：YAML 配置驱动，支持快速实验迭代
 
+## 训练进展（近期更新）
+
+Splendor AI 训练经过一轮深入重构，主要改进如下：
+
+### 关键 Bug 修复
+
+- **按玩家分组计算 GAE**：多人自对弈中，之前把 4 个玩家交错的轨迹当单一轨迹算优势函数，导致 advantage/value 全部变成噪声。现已改为按 `player_id` 分组、每个玩家独立计算 GAE。
+- **终局奖励正确注入**：之前"胜利 +1"只落在最后一位行动玩家身上，基本丢失。现改为终局零和奖励注入到每个玩家自己的最后一步。
+- **游戏结束条件修复**：之前要求"最后一位玩家也必须达到 15 分"才结束，导致对局在最后一轮无限拖长。现改为"有人达到 15 分后走完当前一轮即结束"，并加了回合上限防止死锁。
+- **多进程 reward_config 传递**：多进程收集数据时，子进程之前会退回默认奖励系数、忽略自定义稠密奖励。已修复。
+
+### 固定动作空间（46 个规范槽位）
+
+把之前"相对索引"（动作含义每步都在变）改成固定槽位，每个槽位语义稳定：
+
+```
+0-4 拿2同色 | 5-14 拿3不同色 | 15-26 保留明牌 | 27-29 保留牌堆
+30-41 买明牌 | 42-44 买保留 | 45 pass
+```
+
+### 结构化模型（逐卡共享评估器）
+
+参考 [alpha-zero-general](https://github.com/cestpasphoto/alpha-zero-general) 的 Splendor 实现，策略头对"买明牌/保留明牌/买保留牌"使用**共享卡评估器**（同一个线性层施加到每张卡），让模型学到"这张卡值不值得买"这个与位置无关的概念。
+
+### AlphaZero 训练循环
+
+新增 `scripts/train_alphazero.py`：自对弈用 MCTS 搜索，策略损失 = CE(policy, MCTS 目标)，价值损失 = MSE(value, 终局胜负)。AlphaZero 的价值函数能学到"谁赢"（value_loss 明显下降），而 PPO 的 GAE 价值在对称自对弈中几乎学不会。
+
+### 当前结果（3 人对局）
+
+| 指标 | 数值 |
+|---|---|
+| 平均回合数 | ~87（随机策略 ~105） |
+| tier1 买卡占比 | ~61%（修复前 ~69%） |
+| 对随机 agent 胜率 | ~78% |
+
 ## 快速开始
 
 ### 开发环境
@@ -40,11 +76,23 @@ pip install -e .
 ### 训练你的第一个 Agent
 
 ```bash
-# 训练 Splendor 4人对弈模型（单进程）
-python scripts/train.py --config configs/splendor_ppo_mlp_medium.yaml
+# 训练 Splendor 3人对弈模型（PPO，带 JSONL 收敛日志）
+python scripts/train_convergence.py \
+    --config configs/splendor_ppo_mlp_medium_3p.yaml \
+    --iterations 300 --episodes 128 \
+    --log-file data/logs/convergence_3p.jsonl
 
-# 使用多进程加速训练（推荐CPU训练时使用）
-# 在配置文件中设置 training.num_workers: 4
+# 使用 AlphaZero 训练（MCTS + 终局胜负价值）
+python scripts/train_alphazero.py \
+    --config configs/splendor_ppo_mlp_medium_3p.yaml \
+    --iterations 500 --episodes 16 --simulations 50 \
+    --log-file data/logs/alphazero_3p.jsonl
+
+# 对手池训练（混合历史 checkpoint 做对手）
+python scripts/train_opponent_pool.py \
+    --config configs/splendor_ppo_mlp_medium_3p.yaml \
+    --iterations 500 --episodes 128 \
+    --log-file data/logs/pool_3p.jsonl
 
 # 评估模型性能
 python scripts/evaluate.py --checkpoint data/checkpoints/splendor_ppo/latest.pth
@@ -135,6 +183,9 @@ Board_Games/
 - [x] **MCTS-Enhanced PPO** (v1.0 已完成)
 - [x] TensorBoard 可视化
 - [x] ELO 评分系统
+- [x] 固定动作空间（46 个规范槽位）
+- [x] 结构化模型（逐卡共享评估器）
+- [x] AlphaZero 训练循环
 - [ ] 分布式自对弈
 - [ ] Web 人机对战界面
 
@@ -231,5 +282,5 @@ MIT License
 
 ---
 
-**当前版本**: v0.5.0-dev (MCTS-Enhanced PPO)
-**最后更新**: 2025-11-19
+**当前版本**: v0.6.0-dev (固定动作空间 + 结构化模型 + AlphaZero)
+**最后更新**: 2025-12

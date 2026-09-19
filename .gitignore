@@ -63,6 +63,7 @@ data/checkpoints/*
 data/checkpoints/*.pth
 data/checkpoints/*.pt
 data/logs/*.log
+data/logs/*.jsonl
 data/logs/runs/
 data/games/*.pkl
 data/games/*.json

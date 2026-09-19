@@ -83,6 +83,9 @@ class NeuralAgent(AgentInterface):
             # 获取 logits 和 value
             logits, value_tensor = self.model(obs_tensor, legal_mask)
 
+            # 获取终局胜负概率（AlphaZero 风格的 value）
+            outcome_prob_tensor = self.model.get_outcome_prob(obs_tensor)
+
             # 计算概率分布
             probs = torch.softmax(logits, dim=-1)
 
@@ -100,6 +103,7 @@ class NeuralAgent(AgentInterface):
         action_idx = int(action_tensor.cpu().item())
         log_prob = float(log_prob_tensor.cpu().item())
         value = float(value_tensor.cpu().item())
+        outcome_prob = float(outcome_prob_tensor.cpu().item())
         policy = probs.cpu().numpy().flatten()
 
         # 计算熵（在 CPU 上计算更快）
@@ -114,6 +118,7 @@ class NeuralAgent(AgentInterface):
         info = {
             "log_prob": log_prob,
             "value": value,
+            "outcome_prob": outcome_prob,
             "policy": policy,
             "entropy": entropy,
         }

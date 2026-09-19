@@ -50,6 +50,7 @@ class PPO:
         device: str = "cpu",
         use_value_clip: bool = True,
         value_clip_epsilon: float = 0.4,
+        outcome_coef: float = 1.0,
     ):
         """
         初始化 PPO 训练器
@@ -64,6 +65,7 @@ class PPO:
             device: 设备
             use_value_clip: 是否使用价值损失裁剪（推荐启用以稳定训练）
             value_clip_epsilon: 价值损失裁剪参数（通常 0.3-0.5，比 clip_epsilon 更大）
+            outcome_coef: 终局胜负辅助任务损失系数（给共享编码器强监督）
         """
         self.model = model
         self.device = torch.device(device)
@@ -75,6 +77,7 @@ class PPO:
         self.entropy_coef = entropy_coef
         self.max_grad_norm = max_grad_norm
         self.use_value_clip = use_value_clip
+        self.outcome_coef = outcome_coef
 
         # 优化器
         self.optimizer = optim.Adam(model.parameters(), lr=learning_rate)
@@ -108,6 +111,7 @@ class PPO:
         # 累积指标
         total_policy_loss = 0.0
         total_value_loss = 0.0
+        total_outcome_loss = 0.0
         total_entropy = 0.0
         total_kl_div = 0.0
         total_clip_fraction = 0.0
@@ -129,6 +133,7 @@ class PPO:
 
                 total_policy_loss += metrics["policy_loss"]
                 total_value_loss += metrics["value_loss"]
+                total_outcome_loss += metrics["outcome_loss"]
                 total_entropy += metrics["entropy"]
                 total_kl_div += metrics["kl_div"]
                 total_clip_fraction += metrics["clip_fraction"]
@@ -138,11 +143,23 @@ class PPO:
         avg_metrics = {
             "policy_loss": total_policy_loss / num_updates,
             "value_loss": total_value_loss / num_updates,
+            "outcome_loss": total_outcome_loss / num_updates,
             "entropy": total_entropy / num_updates,
             "kl_div": total_kl_div / num_updates,
             "clip_fraction": total_clip_fraction / num_updates,
             "total_loss": (total_policy_loss + total_value_loss) / num_updates,
         }
+
+        # 计算 explained_variance：价值函数对 returns 的拟合质量
+        # 1.0 = 完美拟合，0 = 等价于预测均值，<0 = 比预测均值还差
+        with torch.no_grad():
+            pred_values = self.model.get_value(batch.observations).squeeze(-1)
+            returns = batch.returns
+            var_returns = returns.var()
+            explained_variance = 1.0 - (
+                (returns - pred_values).var() / (var_returns + 1e-8)
+            )
+            avg_metrics["explained_variance"] = explained_variance.item()
 
         self.update_count += 1
 
@@ -167,7 +184,7 @@ class PPO:
         # 使用保存的合法动作掩码（用于正确计算熵）
         legal_mask = batch.legal_actions_masks
 
-        new_values, new_log_probs, entropy = self.model.evaluate_actions(
+        new_values, new_log_probs, entropy, outcome_logits = self.model.evaluate_actions(
             observations, actions, legal_mask
         )
 
@@ -202,9 +219,22 @@ class PPO:
         # 鼓励探索
         entropy_loss = -entropy.mean()
 
+        # === 4. 终局胜负辅助损失 ===
+        # 用强监督信号（这局最终谁赢）训练 outcome head，
+        # 让共享编码器学到"谁占优"的特征，从而帮助 value/policy。
+        if batch.outcomes is not None:
+            outcome_loss = nn.functional.binary_cross_entropy_with_logits(
+                outcome_logits.squeeze(-1), batch.outcomes
+            )
+        else:
+            outcome_loss = torch.tensor(0.0, device=self.device)
+
         # === 总损失 ===
         total_loss = (
-            policy_loss + self.value_coef * value_loss + self.entropy_coef * entropy_loss
+            policy_loss
+            + self.value_coef * value_loss
+            + self.entropy_coef * entropy_loss
+            + self.outcome_coef * outcome_loss
         )
 
         # 反向传播和优化
@@ -227,6 +257,7 @@ class PPO:
         return {
             "policy_loss": policy_loss.item(),
             "value_loss": value_loss.item(),
+            "outcome_loss": outcome_loss.item(),
             "entropy": entropy.mean().item(),
             "kl_div": kl_div.item(),
             "clip_fraction": clip_fraction.item(),
@@ -252,6 +283,7 @@ class PPO:
                 "entropy_coef": self.entropy_coef,
                 "max_grad_norm": self.max_grad_norm,
                 "use_value_clip": self.use_value_clip,
+                "outcome_coef": self.outcome_coef,
             },
         }
 
@@ -284,6 +316,7 @@ class PPO:
         self.entropy_coef = hyperparams.get("entropy_coef", self.entropy_coef)
         self.max_grad_norm = hyperparams.get("max_grad_norm", self.max_grad_norm)
         self.use_value_clip = hyperparams.get("use_value_clip", self.use_value_clip)
+        self.outcome_coef = hyperparams.get("outcome_coef", self.outcome_coef)
 
         return checkpoint.get("metadata", {})
 

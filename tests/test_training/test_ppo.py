@@ -41,7 +41,7 @@ class TestPPO:
             exp = Experience(
                 player_id=0,
                 observation=np.random.randn(384).astype(np.float32),
-                action=i % 50,
+                action=i % 46,
                 reward=np.random.rand(),
                 done=(i == 31),
                 log_prob=np.random.randn(),
@@ -171,7 +171,7 @@ class TestPPOIntegration:
             exp = Experience(
                 player_id=0,
                 observation=np.random.randn(384).astype(np.float32),
-                action=i % 50,
+                action=i % 46,
                 reward=1.0 if i % 10 == 0 else 0.0,
                 done=(i == 63),
                 log_prob=np.random.randn(),

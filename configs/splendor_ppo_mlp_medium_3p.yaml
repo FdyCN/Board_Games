@@ -1,65 +1,62 @@
-# Splendor PPO Training Configuration
-# 用于训练 Splendor 游戏的 PPO 智能体
+# Splendor PPO 训练配置（3 人对局，验证修复后能否收敛）
+# 用途：修复 GAE/终局奖励/奖励函数后，先用 3 人局快速验证收敛，
+#       稳定后再切换到 4 人局（splendor_ppo_mlp_medium.yaml）。
 
 # 游戏配置
 game:
   name: "splendor"
-  num_players: 4
+  num_players: 3
   seed: null  # null 表示随机
 
 # 模型配置
 model:
   encoder_type: "mlp"  # 选项: "mlp", "attention"
   config: "medium"  # 选项: "small", "medium", "large"
-  # 或者自定义配置:
-  # hidden_dim: 256
-  # intermediate_dim: 320
-  # num_attention_heads: 4
-  # dropout: 0.0
 
 # PPO 算法配置
 algorithm:
   name: "ppo"
-  learning_rate: 0.0001  # 1e-4，提高以加快学习（从 3e-5）
+  learning_rate: 0.0001  # 1e-4
   gamma: 0.99  # 折扣因子
   gae_lambda: 0.95  # GAE 参数
   clip_epsilon: 0.1  # PPO clip 参数（用于策略）
-  value_clip_epsilon: 0.2  # 价值损失裁剪参数（降低以更严格约束）
-  value_coef: 0.5  # 价值损失系数
-  entropy_coef: 0.01  # 熵正则化系数（降低以减少随机性）
+  value_clip_epsilon: 0.2  # 价值损失裁剪参数
+  value_coef: 1.0  # 价值损失系数（提高以强化 critic 学习）
+  entropy_coef: 0.01  # 熵正则化系数
   max_grad_norm: 0.5  # 梯度裁剪阈值
   use_value_clip: true  # 启用价值损失裁剪
+  outcome_coef: 1.0  # 终局胜负辅助任务损失系数（给共享编码器强监督）
 
   # 稠密奖励系数（PPO 专用）
-  # 关键：不再对"拿宝石"给正奖励，避免模型学会无限囤宝石拖延回合
+  # 温和稠密奖励 + 零和终局，配合固定动作空间（P1）验证效果
   dense_rewards:
     take_gem: 0.0           # 拿宝石是手段，不给奖励（避免刷奖励拖延）
     discard_gem: -0.05      # 每个丢弃的宝石（惩罚）
     reserve_card: 0.0       # 保留卡牌是手段，不给奖励
     get_gold: 0.0           # 获得金宝石是手段，不给奖励
-    buy_card_points: 0.2    # 购买卡牌（每分，核心进度信号）
-    buy_card_bonus: 0.1     # 购买卡牌（引擎建设，0 分卡也有价值）
-    noble_visit: 0.6        # 获得贵族（=3 分）
+    buy_card_points: 0.04   # 购买卡牌（每分，温和引导）
+    buy_card_bonus: 0.02    # 购买卡牌（引擎建设弱引导）
+    noble_visit: 0.1        # 获得贵族（温和引导）
     win: 1.0                # 终局胜利（零和注入）
-    step_penalty: -0.002    # 每步小惩罚（鼓励尽快结束游戏）
+    step_penalty: -0.004    # 每步小惩罚（温和时间压力）
 
 # 训练配置
 training:
   num_iterations: 1000  # 总迭代次数
-  episodes_per_iteration: 256  # 每次迭代收集的 episode 数（从 128 增加）
+  episodes_per_iteration: 256  # 每次迭代收集的 episode 数
   update_epochs: 4  # PPO 更新轮数
-  minibatch_size: 512  # 小批次大小（从 256 增加以匹配更大的 batch）
+  minibatch_size: 512  # 小批次大小
   device: "cpu"  # 设备: "cpu", "cuda", "mps"
 
   # 数据增强
   use_position_augmentation: false  # 关闭：当前实现只改"当前玩家ID"字段，会污染观察
 
   # 多进程配置
-  num_workers: 4  # 并行进程数（1=单进程，>1=多进程）
+  num_workers: 2  # 3 人局建议 2-3 个进程
 
   # Checkpoint 配置
-  checkpoint_dir: "data/checkpoints/splendor_ppo/mlp_medium_opt_ppo_v3"
-  checkpoint_interval: 50  # 每 N 次迭代保存检查点（从 100 降低）
+  checkpoint_dir: "data/checkpoints/splendor_ppo/mlp_medium_3p_v1"
+  checkpoint_interval: 50  # 每 N 次迭代保存检查点
 
   # 日志配置
   log_interval: 1  # 每 N 次迭代打印日志
@@ -73,6 +70,6 @@ evaluation:
 
 # 实验配置
 experiment:
-  name: "splendor_ppo_baseline"
-  tags: ["splendor", "ppo", "baseline"]
-  notes: "Baseline PPO training for Splendor with 4 players"
+  name: "splendor_ppo_3p_fixed"
+  tags: ["splendor", "ppo", "3p", "fixed-gae-reward"]
+  notes: "修复按玩家GAE+终局零和奖励+奖励函数后，3人对局验证收敛"

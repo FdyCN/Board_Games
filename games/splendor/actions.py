@@ -103,6 +103,24 @@ class ReserveCardAction(SplendorAction):
 
 
 @dataclass(frozen=True)
+class PassAction(SplendorAction):
+    """
+    空过动作（Pass）
+
+    始终合法，用于避免"无合法动作"死锁。参考 alpha-zero-general 的 Splendor
+    实现里也有 pass 槽位。
+    """
+
+    action_type: ActionType | None = None
+
+    def __post_init__(self):
+        object.__setattr__(self, "action_type", None)
+
+    def __str__(self) -> str:
+        return "Pass()"
+
+
+@dataclass(frozen=True)
 class BuyCardAction(SplendorAction):
     """
     购买卡牌动作

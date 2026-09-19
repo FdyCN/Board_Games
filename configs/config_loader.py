@@ -43,6 +43,7 @@ class DenseRewardsConfig:
     buy_card_bonus: float = 0.05     # 购买卡牌（获得永久宝石加成）
     noble_visit: float = 0.3         # 获得贵族
     win: float = 1.0                 # 游戏胜利
+    step_penalty: float = 0.0        # 每步小惩罚（鼓励尽快结束游戏）
 
 
 @dataclass
@@ -79,6 +80,7 @@ class AlgorithmConfig:
     entropy_coef: float = 0.01
     max_grad_norm: float = 0.5
     use_value_clip: bool = True  # 是否使用价值损失裁剪（推荐启用）
+    outcome_coef: float = 1.0  # 终局胜负辅助任务损失系数
     dense_rewards: DenseRewardsConfig = field(default_factory=DenseRewardsConfig)
     mcts: MCTSConfig = field(default_factory=MCTSConfig)
 

@@ -58,6 +58,9 @@ class MCTS:
         self.noise_alpha = noise_alpha
         self.device = torch.device(device)
 
+        # 搜索专用游戏实例（复用，避免每次动作都 clone/deepcopy）
+        self._search_game = game.clone()
+
     def search(
         self,
         state,
@@ -154,8 +157,8 @@ class MCTS:
         # === 2. Expansion & Evaluation ===
         # 检查是否为终局
         if self.game.is_terminal(current_state):
-            # 终局: 使用真实游戏结果
-            value = self._get_terminal_value(current_state, root.state)
+            # 终局: 使用真实游戏结果（当前玩家视角）
+            value = self._get_terminal_value(current_state)
         else:
             # 非终局: 使用神经网络评估并扩展
             legal_actions = self.game.get_legal_actions(current_state)
@@ -172,10 +175,11 @@ class MCTS:
                 value = 0.0
 
         # === 3. Backpropagation: 回溯更新 ===
-        # 从叶节点开始回溯
+        # 注意：多人游戏（>2 人）不是零和，"对手赢 != 我输"，因此**不能**每层取反。
+        # 价值网络输出的是"当前玩家视角"的期望回报，这里直接把叶节点价值
+        # 累加到路径上所有节点即可（近似：所有玩家共享同一价值尺度）。
         for path_node in reversed(search_path):
             path_node.update(value)
-            value = -value  # 多人游戏: 切换到对手视角
 
     def _apply_action(self, state, action):
         """
@@ -188,12 +192,9 @@ class MCTS:
         Returns:
             新状态
         """
-        # 克隆游戏和状态
-        game_copy = self.game.clone()
-        game_copy._state = deepcopy(state)
-
-        # 执行动作
-        new_state, _, _, _ = game_copy.step(action)
+        # 复用搜索专用游戏实例：直接设置状态，step 内部做快速浅拷贝
+        self._search_game._state = state
+        new_state, _, _, _ = self._search_game.step(action)
 
         return new_state
 
@@ -225,28 +226,16 @@ class MCTS:
         with torch.no_grad():
             action_probs_full = model.get_action_probs(obs_tensor, legal_mask_tensor)
 
-        # action_probs_full 的形状是 (1, action_space_size)
-        # 其中非法动作的概率为 0, 合法动作的概率已归一化
-        # 我们需要提取出对应于 legal_actions 的概率
-
-        # 方式: 遍历 legal_actions, 找到每个动作在 action_space 中的位置
-        legal_probs = []
-        for i, action in enumerate(legal_actions):
-            # 找到这个动作在整个 legal_actions 列表中的索引 (就是 i)
-            # 然后找到它在 action_space 中对应的全局索引
-            # 这里有个问题: action_to_index 返回的是在 legal_actions 中的索引
-            # 我们需要一个能返回全局索引的方法...
-
-            # 临时方案: 利用 legal_mask 来提取
-            # legal_mask 中 True 的位置对应全局 action_space 中合法动作的索引
-            pass
-
-        # 更简单的方法: 直接从 action_probs_full 中提取非零概率
+        # action_probs_full 的形状是 (1, action_space_size)，其中非法动作概率为 0。
+        # 需要按 legal_actions 的**顺序**提取每个动作在规范槽位上的概率，
+        # 保证 legal_probs[i] 与 legal_actions[i] 一一对应。
         probs_np = action_probs_full[0].cpu().numpy()
-        legal_indices = np.where(legal_mask)[0]  # 找到所有 True 的位置
-        legal_probs = probs_np[legal_indices]
+        legal_probs = np.array(
+            [probs_np[self.game.action_to_index(a, state)] for a in legal_actions],
+            dtype=np.float32,
+        )
 
-        # 归一化 (确保和为 1, 虽然理论上已经归一化了)
+        # 归一化 (确保和为 1)
         legal_probs = legal_probs / (np.sum(legal_probs) + 1e-8)
 
         return legal_probs
@@ -272,31 +261,23 @@ class MCTS:
 
         return value.item()
 
-    def _get_terminal_value(self, terminal_state, root_state) -> float:
+    def _get_terminal_value(self, terminal_state) -> float:
         """
-        获取终局状态的真实价值
+        获取终局状态的真实价值（当前玩家视角）
 
         Args:
             terminal_state: 终局状态
-            root_state: 根节点状态 (用于确定评估视角)
 
         Returns:
-            价值 (根节点玩家视角: 1=胜利, -1=失败, 0=平局)
+            价值 (终局当前玩家视角: 胜利=+1, 失败=-1/(n-1)，与 PPO 零和终局奖励一致)
         """
-        # 获取游戏结果
-        results = self.game.get_result(terminal_state)
+        results = self.game.get_result(terminal_state)  # winner=1.0, others=0.0
+        leaf_player = terminal_state.current_player
+        n = self.game.num_players
 
-        # 确定根节点的玩家
-        root_player = self.game.get_current_player(root_state)
-
-        # 返回该玩家的结果 (1=赢, 0=输)
-        # 转换为 MCTS 价值 (1=赢, -1=输)
-        if results[root_player] > 0.5:
+        if results[leaf_player] > 0.5:
             return 1.0  # 胜利
-        elif results[root_player] < 0.5:
-            return -1.0  # 失败
-        else:
-            return 0.0  # 平局
+        return -1.0 / (n - 1)  # 失败（零和：失败者平分负奖励）
 
     def _create_legal_mask(self, state, legal_actions: list) -> np.ndarray:
         """
@@ -312,7 +293,7 @@ class MCTS:
         mask = np.zeros(self.game.action_space_size, dtype=bool)
 
         for action in legal_actions:
-            action_idx = self.game.action_to_index(action, legal_actions)
+            action_idx = self.game.action_to_index(action, state)
             mask[action_idx] = True
 
         return mask

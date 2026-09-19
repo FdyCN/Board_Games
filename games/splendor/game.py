@@ -20,6 +20,7 @@ from core.exceptions import IllegalActionError
 from games.registry import register_game
 from games.splendor.actions import (
     BuyCardAction,
+    PassAction,
     ReserveCardAction,
     SplendorAction,
     TakeGemsAction,
@@ -65,7 +66,32 @@ class SplendorGame(GameInterface):
         "buy_card_bonus": 0.05,
         "noble_visit": 0.3,
         "win": 1.0,
+        # 每一步的小惩罚（鼓励尽快结束游戏，避免"囤宝石刷奖励"的无限拖延）
+        "step_penalty": 0.0,
     }
+
+    # ===== 规范（固定）动作空间 =====
+    # 关键：每个动作槽位有**稳定语义**，策略头每个神经元含义固定。
+    # 这是参考 alpha-zero-general Splendor 实现（action_size=81）后，
+    # 针对本游戏简化出的规范空间。
+    #
+    # 槽位布局（共 46 个）：
+    #   0-4   : 拿 2 个同色宝石（5 种颜色）
+    #   5-14  : 拿 3 个不同色宝石（C(5,3)=10 种组合）
+    #   15-26 : 保留明牌（3 tier × 4 位置）
+    #   27-29 : 从牌堆保留（3 tier）
+    #   30-41 : 购买明牌（3 tier × 4 位置）
+    #   42-44 : 购买保留牌（3 位置）
+    #   45    : pass（空过）
+    ACTION_SPACE_SIZE = 46
+    PASS_INDEX = 45
+
+    # 拿 3 个不同色的 10 种组合（字典序）
+    TAKE_3_COMBOS = [
+        (0, 1, 2), (0, 1, 3), (0, 1, 4), (0, 2, 3), (0, 2, 4),
+        (0, 3, 4), (1, 2, 3), (1, 2, 4), (1, 3, 4), (2, 3, 4),
+    ]
+    _TAKE_3_INDEX = {combo: i for i, combo in enumerate(TAKE_3_COMBOS)}
 
     def __init__(self, num_players: int = 4, seed: int | None = None, reward_config: dict | None = None):
         """
@@ -82,6 +108,9 @@ class SplendorGame(GameInterface):
         self._num_players = num_players
         self._seed = seed
         self._rng = random.Random(seed)
+
+        # 回合上限（总动作数），防止 pass 导致无限对局
+        self._max_total_turns = 62 * num_players
 
         # 设置奖励配置
         self._rewards = self.DEFAULT_REWARDS.copy()
@@ -177,13 +206,13 @@ class SplendorGame(GameInterface):
         if not self._is_action_legal(action, legal_actions):
             raise IllegalActionError(f"非法动作: {action}")
 
-        # 深拷贝状态
-        new_state = deepcopy(self._state)
+        # 快速浅拷贝状态（卡牌/贵族是 frozen 不可变对象，可安全共享引用）
+        new_state = self._state.clone()
         current_player = new_state.get_current_player_state()
         player_id = new_state.current_player
 
-        # 初始化稠密奖励
-        dense_reward = 0.0
+        # 初始化稠密奖励（先加上每步小惩罚，鼓励尽快推进游戏）
+        dense_reward = self._rewards.get("step_penalty", 0.0)
 
         # 执行动作
         info = {"action_type": action.action_type, "player_id": player_id}
@@ -218,6 +247,10 @@ class SplendorGame(GameInterface):
             # 稠密奖励：获得永久宝石加成
             dense_reward += self._rewards["buy_card_bonus"]
 
+        elif isinstance(action, PassAction):
+            # 空过：什么都不做（只有每步小惩罚）
+            info["passed"] = True
+
         # 检查贵族拜访
         visiting_nobles = self._check_noble_visits(new_state, current_player)
         if visiting_nobles:
@@ -231,19 +264,37 @@ class SplendorGame(GameInterface):
             dense_reward += self._rewards["noble_visit"]
 
         # 检查游戏结束条件
+        # 规则：有人首次达到 15 分后，把当前这一轮走完（所有玩家行动次数相等），
+        # 然后游戏结束。之前实现要求"最后一位玩家也必须达到 15 分"才结束，
+        # 导致游戏在 FINAL_ROUND 阶段无限拖长，是"100+ 回合"的直接原因之一。
         if current_player.get_score() >= WINNING_SCORE:
             if new_state.phase == GamePhase.PLAYING:
-                # 进入最后一轮
+                # 首次达到 15 分：进入最后一轮，记录本轮剩余需要行动的玩家数
                 new_state.phase = GamePhase.FINAL_ROUND
+                # 本轮还剩多少玩家要行动（含当前触发玩家）：
+                # 触发玩家 p 及之后的 p+1...n-1，共 n-p 人
+                new_state.final_round_turns_remaining = (
+                    self._num_players - new_state.current_player
+                )
                 info["final_round_triggered"] = True
-            elif new_state.phase == GamePhase.FINAL_ROUND:
-                # 最后一轮结束，游戏结束
-                if new_state.current_player == self._num_players - 1:
-                    new_state.phase = GamePhase.ENDED
 
         # 切换玩家
         new_state.current_player = (new_state.current_player + 1) % self._num_players
         new_state.turn_number += 1
+
+        # 最后一轮：每个玩家行动一次后递减，减到 0 则游戏结束
+        if (
+            new_state.phase == GamePhase.FINAL_ROUND
+            and new_state.final_round_turns_remaining is not None
+        ):
+            new_state.final_round_turns_remaining -= 1
+            if new_state.final_round_turns_remaining <= 0:
+                new_state.phase = GamePhase.ENDED
+
+        # 回合数上限：防止"pass 恒可执行"在银行枯竭且无牌可买时形成无限对局。
+        # 参考 alpha-zero-general Splendor 实现（max_moves = 62 * num_players）。
+        if new_state.turn_number >= self._max_total_turns:
+            new_state.phase = GamePhase.ENDED
 
         # 计算最终奖励（稠密奖励 + 稀疏终局奖励）
         rewards = [0.0] * self._num_players
@@ -288,6 +339,9 @@ class SplendorGame(GameInterface):
         # 3. 购买卡牌动作
         legal_actions.extend(self._get_buy_card_actions(state, player))
 
+        # 4. pass（始终合法，避免"无合法动作"死锁）
+        legal_actions.append(PassAction())
+
         return legal_actions
 
     def state_to_observation(
@@ -330,15 +384,12 @@ class SplendorGame(GameInterface):
     @property
     def action_space_size(self) -> int:
         """
-        动作空间大小
+        动作空间大小（固定规范槽位）
 
-        估算：
-        - 拿宝石: C(5,3) + 5 = 10 + 5 = 15 种
-        - 保留卡牌: 12 张明牌 + 3 个等级 = 15 种
-        - 购买卡牌: 最多 12 张明牌 + 3 张保留卡 = 15 种
-        - 总计: ~45 种（实际会动态生成）
+        固定为 46 个槽位（见类常量 ACTION_SPACE_SIZE 的注释），
+        每个槽位语义稳定，便于策略网络学习稳定动作偏好。
         """
-        return 50  # 留有余量
+        return self.ACTION_SPACE_SIZE
 
     @property
     def current_player(self) -> int:
@@ -390,32 +441,67 @@ class SplendorGame(GameInterface):
         """
         return self.get_result(state)
 
-    def action_to_index(self, action: SplendorAction, legal_actions: list[SplendorAction]) -> int:
+    def action_to_index(self, action: SplendorAction, state: SplendorState | None = None) -> int:
         """
-        将动作对象转换为索引
+        将动作对象转换为**规范动作索引**（固定槽位，语义稳定）
+
+        规范动作空间见类常量 ACTION_SPACE_SIZE 的注释。该映射需要 state 来
+        确定"明牌/保留牌的位置"（槽位按位置而非 card_id），因此每个槽位的
+        含义跨状态恒定。
 
         Args:
             action: 动作对象
-            legal_actions: 合法动作列表
+            state: 游戏状态（None 则使用当前状态）
 
         Returns:
-            动作在合法动作列表中的索引
-
-        Raises:
-            ValueError: 如果动作不在合法动作列表中
+            规范动作索引 (0 到 action_space_size-1)
         """
-        for i, legal_action in enumerate(legal_actions):
-            if self._actions_equal(action, legal_action):
-                return i
-        raise ValueError(f"动作 {action} 不在合法动作列表中")
+        if state is None:
+            state = self._state
+        if state is None:
+            raise RuntimeError("状态为空，无法计算规范动作索引")
 
-    def index_to_action(self, index: int, legal_actions: list[SplendorAction]) -> SplendorAction:
+        player = state.get_current_player_state()
+
+        if isinstance(action, TakeGemsAction):
+            gems = action.gems
+            # 拿 2 个同色
+            for c in range(NUM_GEM_COLORS):
+                if gems[c] == 2:
+                    return c  # 0-4
+            # 拿 3 个不同色
+            colors = tuple(sorted(c for c in range(NUM_GEM_COLORS) if gems[c] == 1))
+            return 5 + self._TAKE_3_INDEX[colors]  # 5-14
+
+        elif isinstance(action, ReserveCardAction):
+            if action.card_id is None:
+                # 从牌堆保留
+                return 27 + (action.tier - 1)  # 27-29
+            # 保留明牌：按位置
+            pos = self._find_open_card_position(state, action.tier, action.card_id)
+            return 15 + (action.tier - 1) * 4 + pos  # 15-26
+
+        elif isinstance(action, BuyCardAction):
+            if action.from_reserved:
+                pos = self._find_reserved_card_position(player, action.card_id)
+                return 42 + pos  # 42-44
+            else:
+                # BuyCardAction 不携带 tier，需要跨所有 tier 查找位置
+                tier, pos = self._find_card_tier_position(state, action.card_id)
+                return 30 + (tier - 1) * 4 + pos  # 30-41
+
+        elif isinstance(action, PassAction):
+            return self.PASS_INDEX
+
+        raise ValueError(f"未知动作类型: {type(action)}")
+
+    def index_to_action(self, index: int, state: SplendorState | None = None) -> SplendorAction:
         """
-        将索引转换为动作对象
+        将**规范动作索引**转换为动作对象
 
         Args:
-            index: 动作索引
-            legal_actions: 合法动作列表
+            index: 规范动作索引 (0 到 action_space_size-1)
+            state: 游戏状态（None 则使用当前状态）
 
         Returns:
             动作对象
@@ -423,9 +509,81 @@ class SplendorGame(GameInterface):
         Raises:
             IndexError: 如果索引超出范围
         """
-        if index < 0 or index >= len(legal_actions):
-            raise IndexError(f"动作索引 {index} 超出范围 [0, {len(legal_actions)})")
-        return legal_actions[index]
+        if index < 0 or index >= self.ACTION_SPACE_SIZE:
+            raise IndexError(f"动作索引 {index} 超出范围 [0, {self.ACTION_SPACE_SIZE})")
+        if state is None:
+            state = self._state
+        if state is None:
+            raise RuntimeError("状态为空，无法转换规范动作索引")
+
+        player = state.get_current_player_state()
+
+        if index < 5:
+            # 拿 2 个同色
+            gems = [0] * NUM_GEM_COLORS
+            gems[index] = 2
+            return TakeGemsAction(gems=tuple(gems))
+
+        elif index < 15:
+            # 拿 3 个不同色
+            colors = self.TAKE_3_COMBOS[index - 5]
+            gems = [0] * NUM_GEM_COLORS
+            for c in colors:
+                gems[c] = 1
+            return TakeGemsAction(gems=tuple(gems))
+
+        elif index < 27:
+            # 保留明牌
+            offset = index - 15
+            tier = CardTier(offset // 4 + 1)
+            pos = offset % 4
+            card = state.open_cards[tier][pos]
+            return ReserveCardAction(tier=tier, card_id=card.card_id)
+
+        elif index < 30:
+            # 从牌堆保留
+            tier = CardTier(index - 27 + 1)
+            return ReserveCardAction(tier=tier, card_id=None)
+
+        elif index < 42:
+            # 购买明牌
+            offset = index - 30
+            tier = CardTier(offset // 4 + 1)
+            pos = offset % 4
+            card = state.open_cards[tier][pos]
+            return BuyCardAction(card_id=card.card_id, from_reserved=False)
+
+        elif index < 45:
+            # 购买保留牌
+            pos = index - 42
+            card = player.reserved_cards[pos]
+            return BuyCardAction(card_id=card.card_id, from_reserved=True)
+
+        else:
+            # pass
+            return PassAction()
+
+    def _find_open_card_position(self, state: SplendorState, tier: CardTier, card_id: int) -> int:
+        """在公开卡牌中查找卡牌位置（用于规范槽位）"""
+        for i, c in enumerate(state.open_cards[tier]):
+            if c.card_id == card_id:
+                return i
+        raise ValueError(f"卡牌 {card_id} 不在 tier {tier} 的明牌中")
+
+    def _find_card_tier_position(self, state: SplendorState, card_id: int) -> tuple[int, int]:
+        """跨所有 tier 查找卡牌所在 (tier, position)，用于 BuyCardAction"""
+        for tier in [CardTier.TIER_1, CardTier.TIER_2, CardTier.TIER_3]:
+            for i, c in enumerate(state.open_cards[tier]):
+                if c.card_id == card_id:
+                    return tier, i
+        raise ValueError(f"卡牌 {card_id} 不在明牌中")
+
+    def _find_reserved_card_position(self, player: PlayerState, card_id: int) -> int:
+        """在保留卡中查找卡牌位置（用于规范槽位）"""
+        for i, c in enumerate(player.reserved_cards):
+            if c.card_id == card_id:
+                return i
+        raise ValueError(f"卡牌 {card_id} 不在保留区中")
 
     def get_result(self, state: SplendorState | None = None) -> list[float]:
         """
@@ -456,7 +614,7 @@ class SplendorGame(GameInterface):
             reward_config=self._rewards.copy()
         )
         if self._state is not None:
-            new_game._state = deepcopy(self._state)
+            new_game._state = self._state.clone()
         return new_game
 
     def render(self, state: SplendorState | None = None) -> str:
@@ -657,7 +815,7 @@ class SplendorGame(GameInterface):
     def _get_take_gems_actions(
         self, state: SplendorState, player: PlayerState
     ) -> list[TakeGemsAction]:
-        """生成所有拿宝石的合法动作"""
+        """生成所有拿宝石的合法动作（仅标准动作，配合规范动作空间）"""
         actions = []
 
         # 1. 拿 3 个不同颜色
@@ -678,20 +836,9 @@ class SplendorGame(GameInterface):
                 gems[color] = 2
                 actions.append(TakeGemsAction(gems=tuple(gems)))
 
-        # 3. 如果上述动作都不可行，允许拿更少的宝石（避免死锁）
-        if not actions and available_colors:
-            # 如果只有 1-2 种颜色，允许拿 1-2 个不同颜色
-            if len(available_colors) == 2:
-                gems = [0] * NUM_GEM_COLORS
-                for color in available_colors:
-                    gems[color] = 1
-                actions.append(TakeGemsAction(gems=tuple(gems)))
-            elif len(available_colors) == 1:
-                # 只有一种颜色，拿 1 个
-                color = available_colors[0]
-                gems = [0] * NUM_GEM_COLORS
-                gems[color] = 1
-                actions.append(TakeGemsAction(gems=tuple(gems)))
+        # 注：移除了"拿 2 个不同 / 拿 1 个"的退化兜底动作，
+        # 它们不是标准 Splendor 动作且无法映射到稳定槽位。
+        # 银行枯竭时由始终合法的 pass 动作兜底，避免死锁。
 
         return actions
 
@@ -756,6 +903,8 @@ class SplendorGame(GameInterface):
                 action1.card_id == action2.card_id
                 and action1.from_reserved == action2.from_reserved
             )
+        elif isinstance(action1, PassAction):
+            return True
         return False
 
 

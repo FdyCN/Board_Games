@@ -1413,6 +1413,33 @@ python scripts/evaluate.py --mode evolution --checkpoints data/checkpoints/splen
 
 ---
 
+
+### 2025-11-18（奖励系统）
+
+### 稠密奖励配置（PPO 专用）
+
+PPO 训练使用稠密奖励系统，每个动作都产生相应的奖励信号。奖励系数可在配置文件中调整：
+
+```yaml
+# configs/splendor_ppo_mlp_medium.yaml
+algorithm:
+  dense_rewards:
+    take_gem: 0.01          # 每个拿取的宝石
+    discard_gem: -0.05      # 每个丢弃的宝石（惩罚）
+    reserve_card: 0.02      # 保留卡牌
+    get_gold: 0.03          # 获得金宝石
+    buy_card_points: 0.15   # 购买卡牌（每分）
+    buy_card_bonus: 0.05    # 购买卡牌（获得永久宝石加成）
+    noble_visit: 0.3        # 获得贵族
+    win: 1.0                # 游戏胜利
+```
+
+### 设计说明
+
+- **配置化设计**：奖励系数放在 YAML 配置文件中，便于快速调参和实验追踪
+- **PPO 专用**：稠密奖励是 PPO 算法特有的，切换到 AlphaZero 时将不使用
+- **宝石丢弃机制**：当玩家持有的宝石超过 10 个时，系统自动丢弃多余宝石并给予惩罚
+
 ### 2025-11-17 (多进程训练功能完成)
 
 **✅ 多进程自对弈数据收集**

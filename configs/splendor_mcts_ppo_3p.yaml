@@ -1,0 +1,67 @@
+# Splendor MCTS-Enhanced PPO 训练配置（3 人对局，修复多人回传 bug 后）
+# 用 MCTS 生成改进策略，帮助 PPO 摆脱"只囤 tier1 卡"的本地最优。
+
+game:
+  name: "splendor"
+  num_players: 3
+  seed: null
+
+model:
+  encoder_type: "mlp"
+  config: "small"  # 小模型，加速 MCTS
+
+algorithm:
+  name: "ppo"
+  learning_rate: 0.0003
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.1
+  value_clip_epsilon: 0.2
+  value_coef: 1.0
+  entropy_coef: 0.01
+  max_grad_norm: 0.5
+  use_value_clip: true
+
+  # 稀疏奖励：让 value 网络聚焦于"谁赢"（零和终局），配合 MCTS 搜索
+  dense_rewards:
+    take_gem: 0.0
+    discard_gem: -0.05
+    reserve_card: 0.0
+    get_gold: 0.0
+    buy_card_points: 0.0
+    buy_card_bonus: 0.0
+    noble_visit: 0.0
+    win: 1.0
+    step_penalty: -0.005
+
+  mcts:
+    enabled: true
+    simulations: 16          # 固定少量模拟（速度优先，验证用）
+    c_puct: 1.5
+    add_noise: true
+    temperature: 1.0
+    scheduler:
+      enabled: false
+
+training:
+  num_iterations: 1000
+  episodes_per_iteration: 8    # MCTS 较慢，用很少的局数（先验证效果与速度）
+  update_epochs: 4
+  minibatch_size: 256
+  device: "cpu"
+  use_position_augmentation: false
+  num_workers: 1               # MCTS 暂只支持单进程
+  checkpoint_dir: "data/checkpoints/splendor_mcts_ppo/mlp_small_3p_v1"
+  checkpoint_interval: 50
+  log_interval: 1
+  verbose: true
+
+evaluation:
+  eval_interval: 50
+  eval_episodes: 100
+  deterministic: true
+
+experiment:
+  name: "splendor_mcts_ppo_3p_fixed"
+  tags: ["splendor", "mcts", "ppo", "3p"]
+  notes: "修复多人回传 bug 后的 MCTS 训练（3人，稀疏奖励，16 sims）"

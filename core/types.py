@@ -70,6 +70,7 @@ class Experience:
     advantage: float | None = None
     returns: float | None = None  # 回报（用于价值函数训练）
     legal_actions_mask: np.ndarray | None = None  # 合法动作掩码
+    outcome: float | None = None  # 终局胜负标签 (1=本玩家获胜, 0=失败)，用于辅助监督
 
     def __post_init__(self):
         """验证数据有效性"""
