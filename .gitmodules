@@ -1,0 +1,3 @@
+[submodule "third_party/alpha-zero-general"]
+	path = third_party/alpha-zero-general
+	url = https://github.com/cestpasphoto/alpha-zero-general.git
