@@ -16,6 +16,8 @@ AlphaZero 训练脚本（替换 PPO）
 
 import argparse
 import json
+import multiprocessing as mp
+import os
 import sys
 import time
 from pathlib import Path
@@ -84,6 +86,33 @@ def self_play(game, model, mcts, num_simulations, temp_threshold, device):
     return [(obs, pi, z[player], mask) for obs, pi, player, mask in examples]
 
 
+def _worker_self_play(args):
+    """多进程 worker：创建模型+游戏+MCTS，加载权重，跑 num_games 局自对弈。
+
+    返回 (examples, ep_lens)，其中 examples 是训练样本列表。
+    每个 worker 进程独立持有模型/游戏/MCTS，互不干扰。
+    """
+    (state_dict, num_games, num_simulations, mcts_batch_size,
+     num_players, encoder_type, model_config, reward_config) = args
+
+    game = create_game("splendor", num_players=num_players, reward_config=reward_config)
+    model = create_model(
+        obs_dim=game.observation_shape[0], action_size=game.action_space_size,
+        encoder_type=encoder_type, config=model_config,
+    )
+    model.load_state_dict(state_dict)
+    model.eval()
+    mcts = MCTS(game=game, c_puct=1.5, add_noise=True, device="cpu", batch_size=mcts_batch_size)
+
+    examples = []
+    ep_lens = []
+    for _ in range(num_games):
+        eps = self_play(game, model, mcts, num_simulations, temp_threshold=10**9, device=torch.device("cpu"))
+        examples.extend(eps)
+        ep_lens.append(len(eps))
+    return examples, ep_lens
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
@@ -95,6 +124,7 @@ def main():
     ap.add_argument("--epochs", type=int, default=10)
     ap.add_argument("--batch-size", type=int, default=256)
     ap.add_argument("--mcts-batch-size", type=int, default=64, help="MCTS 叶节点批量评估大小（GPU/MPS 建议 64-256）")
+    ap.add_argument("--num-workers", type=int, default=None, help="自对弈并行进程数（默认 CPU 核心数-1）")
     ap.add_argument("--lr", type=float, default=0.001)
     ap.add_argument("--checkpoint-interval", type=int, default=10)
     args = ap.parse_args()
@@ -102,18 +132,17 @@ def main():
     c = Config.from_yaml(args.config)
     reward_config = {k: getattr(c.algorithm.dense_rewards, k) for k in REWARD_KEYS}
 
+    num_workers = args.num_workers or max(1, (os.cpu_count() or 4) - 1)
+
     game = create_game("splendor", num_players=c.game.num_players, reward_config=reward_config)
     model = create_model(
         obs_dim=game.observation_shape[0], action_size=game.action_space_size,
         encoder_type=c.model.encoder_type, config=c.model.config,
     )
-    device = torch.device(c.training.device)
+    # 强制 CPU：MPS 对小模型无益（见 docs/MPS_OPTIMIZATION.md）
+    device = torch.device("cpu")
     model.to(device)
 
-    mcts = MCTS(
-        game=game, c_puct=1.5, add_noise=True,
-        device=c.training.device, batch_size=args.mcts_batch_size,
-    )
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
     log_path = Path(args.log_file)
@@ -122,7 +151,7 @@ def main():
     f.write(json.dumps({
         "type": "header", "config": args.config, "num_players": c.game.num_players,
         "iterations": args.iterations, "episodes": args.episodes,
-        "simulations": args.simulations, "lr": args.lr,
+        "simulations": args.simulations, "lr": args.lr, "num_workers": num_workers,
     }) + "\n")
     f.flush()
 
@@ -131,16 +160,31 @@ def main():
         f.flush()
         print(json.dumps(record), flush=True)
 
+    # 持久进程池（spawn 一次，避免每迭代重复 spawn 开销）
+    ctx = mp.get_context("spawn")
+    pool = ctx.Pool(num_workers)
+
     for it in range(1, args.iterations + 1):
         t0 = time.time()
 
-        # 1. 自对弈收集
+        # 1. 并行自对弈收集（每个 worker 一份模型权重 + 独立 game/MCTS）
+        state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
+        games_per_worker = args.episodes // num_workers
+        remainder = args.episodes % num_workers
+        tasks = []
+        for w in range(num_workers):
+            ng = games_per_worker + (1 if w < remainder else 0)
+            if ng > 0:
+                tasks.append((
+                    state_dict, ng, args.simulations, args.mcts_batch_size,
+                    c.game.num_players, c.model.encoder_type, c.model.config, reward_config,
+                ))
+
         examples = []
         ep_lens = []
-        for _ in range(args.episodes):
-            eps = self_play(game, model, mcts, args.simulations, args.temp_threshold, device)
-            examples.extend(eps)
-            ep_lens.append(len(eps))
+        for res_examples, res_lens in pool.map(_worker_self_play, tasks):
+            examples.extend(res_examples)
+            ep_lens.extend(res_lens)
 
         # 2. 训练
         obs = np.stack([e[0] for e in examples])
@@ -193,6 +237,8 @@ def main():
             torch.save({"model_state_dict": model.state_dict(), "iteration": it},
                        Path(c.training.checkpoint_dir) / f"alphazero_iter_{it}.pth")
 
+    pool.close()
+    pool.join()
     f.close()
     print(json.dumps({"type": "done", "iterations": args.iterations}), flush=True)
 
