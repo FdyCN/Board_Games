@@ -94,6 +94,7 @@ def main():
     ap.add_argument("--temp-threshold", type=int, default=15)
     ap.add_argument("--epochs", type=int, default=10)
     ap.add_argument("--batch-size", type=int, default=256)
+    ap.add_argument("--mcts-batch-size", type=int, default=64, help="MCTS 叶节点批量评估大小（GPU/MPS 建议 64-256）")
     ap.add_argument("--lr", type=float, default=0.001)
     ap.add_argument("--checkpoint-interval", type=int, default=10)
     args = ap.parse_args()
@@ -109,7 +110,10 @@ def main():
     device = torch.device(c.training.device)
     model.to(device)
 
-    mcts = MCTS(game=game, c_puct=1.5, add_noise=True, device=c.training.device)
+    mcts = MCTS(
+        game=game, c_puct=1.5, add_noise=True,
+        device=c.training.device, batch_size=args.mcts_batch_size,
+    )
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
     log_path = Path(args.log_file)

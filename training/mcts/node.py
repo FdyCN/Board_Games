@@ -139,6 +139,23 @@ class MCTSNode:
         self.visit_count += 1
         self.total_value += value
 
+    def add_virtual_loss(self, vloss: float = 1.0) -> None:
+        """
+        添加虚拟损失：临时降低该节点的 Q 值并增加访问次数，
+        让同一批内后续的模拟选择**不同的路径**（用于批量叶节点评估）。
+        """
+        self.visit_count += 1
+        self.total_value -= vloss
+
+    def revert_virtual_loss(self, value: float, vloss: float = 1.0) -> None:
+        """
+        抵消虚拟损失并加入真实价值。
+
+        注意：visit_count 已经在 add_virtual_loss 里 +1 了，这里不再加。
+        等价于：total_value = total_value - (-vloss) + value
+        """
+        self.total_value += vloss + value
+
     def backpropagate(self, value: float) -> None:
         """
         从当前节点向上回溯更新所有祖先节点

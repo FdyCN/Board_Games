@@ -39,6 +39,7 @@ class MCTS:
         noise_epsilon: float = 0.25,
         noise_alpha: float = 0.3,
         device: str = "cpu",
+        batch_size: int = 64,
     ):
         """
         初始化 MCTS 搜索引擎
@@ -50,6 +51,7 @@ class MCTS:
             noise_epsilon: 噪声混合系数 (推荐: 0.25)
             noise_alpha: Dirichlet 参数 (推荐: 10/avg_branching_factor)
             device: 设备 ("cpu", "cuda", "mps")
+            batch_size: 批量叶节点评估的大小（越大越能利用 GPU/MPS 并行）
         """
         self.game = game
         self.c_puct = c_puct
@@ -57,6 +59,7 @@ class MCTS:
         self.noise_epsilon = noise_epsilon
         self.noise_alpha = noise_alpha
         self.device = torch.device(device)
+        self.batch_size = batch_size
 
         # 搜索专用游戏实例（复用，避免每次动作都 clone/deepcopy）
         self._search_game = game.clone()
@@ -105,12 +108,32 @@ class MCTS:
         # 扩展根节点
         root.expand(action_probs, legal_actions)
 
-        # 执行 MCTS 模拟
+        # 批量执行 MCTS 模拟（虚拟损失 + 批量叶节点评估）
+        pending_leaves = []  # (leaf_node, leaf_state, leaf_legal_actions, search_path)
         for sim in range(num_simulations):
-            self._simulate(root, model)
+            # 选择叶节点（带虚拟损失）
+            leaf_node, leaf_state, search_path = self._select_leaf(root)
+            leaf_legal_actions = self.game.get_legal_actions(leaf_state)
 
-            if verbose and (sim + 1) % 20 == 0:
-                print(f"  MCTS Simulation {sim + 1}/{num_simulations}")
+            if self.game.is_terminal(leaf_state):
+                value = self._get_terminal_value(leaf_state)
+                for p in reversed(search_path):
+                    p.revert_virtual_loss(value)
+            elif not leaf_legal_actions:
+                # 无合法动作（异常/死锁），价值按 0 处理
+                for p in reversed(search_path):
+                    p.revert_virtual_loss(0.0)
+            else:
+                pending_leaves.append((leaf_node, leaf_state, leaf_legal_actions, search_path))
+
+            # 攒够一批就批量评估
+            if len(pending_leaves) >= self.batch_size:
+                self._evaluate_batch(pending_leaves, model)
+                pending_leaves = []
+
+        # 处理剩余未评估的叶节点
+        if pending_leaves:
+            self._evaluate_batch(pending_leaves, model)
 
         # 根据访问次数计算动作概率
         action_probs = root.get_action_probs(temperature=temperature)
@@ -124,62 +147,81 @@ class MCTS:
 
         return action_probs, legal_actions
 
-    def _simulate(self, root: MCTSNode, model) -> None:
+    def _select_leaf(self, root: MCTSNode):
         """
-        单次 MCTS 模拟
+        Selection：从根节点沿 UCB 选择到叶节点，沿途添加虚拟损失。
 
-        执行流程:
-        1. Selection: 从根节点开始,选择 UCB 最高的子节点
-        2. Expansion: 到达叶节点后扩展
-        3. Evaluation: 使用神经网络评估价值
-        4. Backpropagation: 向上传播价值
-
-        Args:
-            root: 根节点
-            model: Actor-Critic 模型
+        Returns:
+            (leaf_node, leaf_state, search_path)
         """
         node = root
         search_path = [node]
         current_state = root.state
 
-        # === 1. Selection: 选择叶节点 ===
+        node.add_virtual_loss()
+
         while not node.is_leaf():
             node = node.select_child(self.c_puct)
             search_path.append(node)
+            node.add_virtual_loss()
 
-            # 延迟状态计算 (节省内存)
+            # 延迟状态计算
             if node.state is None:
                 current_state = self._apply_action(current_state, node.action)
                 node.state = current_state
             else:
                 current_state = node.state
 
-        # === 2. Expansion & Evaluation ===
-        # 检查是否为终局
-        if self.game.is_terminal(current_state):
-            # 终局: 使用真实游戏结果（当前玩家视角）
-            value = self._get_terminal_value(current_state)
-        else:
-            # 非终局: 使用神经网络评估并扩展
-            legal_actions = self.game.get_legal_actions(current_state)
+        return node, current_state, search_path
 
-            if legal_actions:
-                # 获取策略和价值
-                action_probs = self._get_policy_probs(current_state, legal_actions, model)
-                value = self._get_value(current_state, model)
+    def _evaluate_batch(self, leaves: list, model) -> None:
+        """
+        批量评估一组叶节点：一次前向得到所有叶子的策略先验和价值，
+        然后逐个扩展并回溯。
 
-                # 扩展节点
-                node.expand(action_probs, legal_actions)
+        Args:
+            leaves: [(leaf_node, leaf_state, leaf_legal_actions, search_path), ...]
+            model: Actor-Critic 模型
+        """
+        if not leaves:
+            return
+
+        # 构建批量输入
+        obs_list = []
+        mask_list = []
+        for _, leaf_state, leaf_legal_actions, _ in leaves:
+            cp = self.game.get_current_player(leaf_state)
+            obs_list.append(self.game.state_to_observation(leaf_state, cp))
+            mask_list.append(self._create_legal_mask(leaf_state, leaf_legal_actions))
+
+        obs_batch = torch.FloatTensor(np.stack(obs_list)).to(self.device)
+        mask_batch = torch.BoolTensor(np.stack(mask_list)).to(self.device)
+
+        model.eval()
+        with torch.no_grad():
+            logits, values = model(obs_batch, mask_batch)  # (B, action_size), (B, 1)
+
+        probs = torch.softmax(logits, dim=-1).cpu().numpy()
+        vals = values.squeeze(-1).cpu().numpy()
+
+        for i, (leaf_node, leaf_state, leaf_legal_actions, search_path) in enumerate(leaves):
+            # 提取该叶子各合法动作的先验概率
+            leaf_probs = np.array(
+                [probs[i][self.game.action_to_index(a, leaf_state)] for a in leaf_legal_actions],
+                dtype=np.float32,
+            )
+            s = leaf_probs.sum()
+            if s > 1e-8:
+                leaf_probs = leaf_probs / s
             else:
-                # 没有合法动作 (异常情况)
-                value = 0.0
+                leaf_probs = np.full(len(leaf_legal_actions), 1.0 / len(leaf_legal_actions), dtype=np.float32)
 
-        # === 3. Backpropagation: 回溯更新 ===
-        # 注意：多人游戏（>2 人）不是零和，"对手赢 != 我输"，因此**不能**每层取反。
-        # 价值网络输出的是"当前玩家视角"的期望回报，这里直接把叶节点价值
-        # 累加到路径上所有节点即可（近似：所有玩家共享同一价值尺度）。
-        for path_node in reversed(search_path):
-            path_node.update(value)
+            leaf_node.expand(leaf_probs, leaf_legal_actions)
+
+            value = float(vals[i])
+            # 回溯：抵消虚拟损失 + 加入真实价值
+            for p in reversed(search_path):
+                p.revert_virtual_loss(value)
 
     def _apply_action(self, state, action):
         """
