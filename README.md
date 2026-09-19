@@ -51,14 +51,24 @@ Splendor AI 训练经过一轮深入重构，主要改进如下：
 
 ### 与开源模型对比
 
-引入 [cestpasphoto/alpha-zero-general](https://github.com/cestpasphoto/alpha-zero-general)（git submodule）的 3 人预训练模型做基准，两者都用"贪婪/确定性策略 vs 2 个随机对手"：
+引入 [cestpasphoto/alpha-zero-general](https://github.com/cestpasphoto/alpha-zero-general)（git submodule）的 3 人预训练模型做基准：
+
+**1. 分别 vs 2 个随机对手（贪婪/确定性策略）**：
 
 | 模型 | vs 2 随机 胜率 | 平均回合 |
 |---|---|---|
 | 开源 AlphaZero 3 人预训练 | 100% | 97.7 |
 | 本项目 PPO（结构化模型） | 98% | 90.5 |
 
-结论：本地 PPO 模型已接近开源 AlphaZero 模型的强度（98% vs 100%），且对局更快结束。可用 `scripts/compare_with_open_source.py` 复现。
+**2. 直接 head-to-head（本地模型 + 开源模型 + 1 随机，100 局，随机洗牌座位）**：
+
+| 模型 | 胜局 | 胜率 |
+|---|---|---|
+| 开源 AlphaZero | 55 | **55%** |
+| 本项目 PPO | 45 | 45% |
+| 随机 | 0 | 0% |
+
+结论：本地 PPO 模型已接近开源 AlphaZero 的强度（head-to-head 45% vs 55%，vs 随机 98% vs 100%），且对局更快结束。可用 `scripts/compare_with_open_source.py`（vs 随机）和 `scripts/head_to_head.py`（直接对打）复现。
 
 ## 快速开始
 
