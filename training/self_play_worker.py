@@ -453,15 +453,10 @@ class SelfPlayWorker:
         self.episodes_collected = 0
         self.total_steps = 0
 
-        # 保存游戏类和参数（用于多进程）
+        # 保存游戏类和参数（用于多进程）。用 game_kwargs() 让每个游戏自己
+        # 声明重建所需参数（num_players / seed / reward_config 等），游戏无关。
         self._game_class = type(game)
-        self._game_kwargs = {"num_players": game.num_players}
-        if hasattr(game, "seed"):
-            self._game_kwargs["seed"] = game.seed
-        # 关键：多进程子进程会重新创建游戏实例，必须把 reward_config 一并传下去，
-        # 否则子进程会退回 DEFAULT_REWARDS，导致自定义奖励/稠密奖励系数失效。
-        if hasattr(game, "_rewards"):
-            self._game_kwargs["reward_config"] = dict(game._rewards)
+        self._game_kwargs = game.game_kwargs()
 
     def collect_one(self) -> Episode:
         """

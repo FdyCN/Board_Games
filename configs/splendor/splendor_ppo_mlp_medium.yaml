@@ -58,7 +58,7 @@ training:
   num_workers: 4  # 并行进程数（1=单进程，>1=多进程）
 
   # Checkpoint 配置
-  checkpoint_dir: "data/checkpoints/splendor_ppo/mlp_medium_opt_ppo_v3"
+  checkpoint_dir: "data/splendor/checkpoints/mlp_medium_opt_ppo_v3"
   checkpoint_interval: 50  # 每 N 次迭代保存检查点（从 100 降低）
 
   # 日志配置

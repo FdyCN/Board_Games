@@ -32,21 +32,6 @@ class ModelConfig:
 
 
 @dataclass
-class DenseRewardsConfig:
-    """稠密奖励配置（PPO 专用）"""
-
-    take_gem: float = 0.01           # 每个拿取的宝石
-    discard_gem: float = -0.05       # 每个丢弃的宝石（惩罚）
-    reserve_card: float = 0.02       # 保留卡牌
-    get_gold: float = 0.03           # 获得金宝石
-    buy_card_points: float = 0.15    # 购买卡牌（每分）
-    buy_card_bonus: float = 0.05     # 购买卡牌（获得永久宝石加成）
-    noble_visit: float = 0.3         # 获得贵族
-    win: float = 1.0                 # 游戏胜利
-    step_penalty: float = 0.0        # 每步小惩罚（鼓励尽快结束游戏）
-
-
-@dataclass
 class MCTSSchedulerConfig:
     """MCTS 调度器配置"""
 
@@ -81,7 +66,9 @@ class AlgorithmConfig:
     max_grad_norm: float = 0.5
     use_value_clip: bool = True  # 是否使用价值损失裁剪（推荐启用）
     outcome_coef: float = 1.0  # 终局胜负辅助任务损失系数
-    dense_rewards: DenseRewardsConfig = field(default_factory=DenseRewardsConfig)
+    # 稠密奖励（PPO 专用）。存为自由字典：每个游戏可定义自己的奖励键，
+    # 训练脚本无需知道具体游戏，直接把该字典透传给 create_game。
+    dense_rewards: dict = field(default_factory=dict)
     mcts: MCTSConfig = field(default_factory=MCTSConfig)
 
 
@@ -135,19 +122,18 @@ class Config:
     def from_dict(cls, config_dict: Dict[str, Any]) -> "Config":
         """从字典创建配置"""
         # 解析 algorithm 配置，处理嵌套的 dense_rewards 和 mcts
-        algorithm_dict = config_dict.get("algorithm", {})
+        # 先复制，避免 pop 修改调用方传入的原始字典
+        algorithm_dict = dict(config_dict.get("algorithm", {}))
 
-        # 处理 dense_rewards
-        dense_rewards_dict = algorithm_dict.pop("dense_rewards", {})
+        # 处理稠密奖励（自由字典，游戏无关）
+        dense_rewards_dict = algorithm_dict.pop("dense_rewards", {}) or {}
 
         # 处理 mcts
-        mcts_dict = algorithm_dict.pop("mcts", {})
-        mcts_scheduler_dict = mcts_dict.pop("scheduler", {})
+        mcts_dict = dict(algorithm_dict.pop("mcts", {}) or {})
+        mcts_scheduler_dict = mcts_dict.pop("scheduler", {}) or {}
 
         algorithm_config = AlgorithmConfig(**algorithm_dict)
-
-        if dense_rewards_dict:
-            algorithm_config.dense_rewards = DenseRewardsConfig(**dense_rewards_dict)
+        algorithm_config.dense_rewards = dict(dense_rewards_dict)
 
         if mcts_dict or mcts_scheduler_dict:
             mcts_config = MCTSConfig(**mcts_dict)
@@ -184,7 +170,7 @@ class Config:
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
         algorithm_dict = self.algorithm.__dict__.copy()
-        algorithm_dict["dense_rewards"] = self.algorithm.dense_rewards.__dict__
+        algorithm_dict["dense_rewards"] = dict(self.algorithm.dense_rewards)
 
         return {
             "game": self.game.__dict__,
@@ -196,16 +182,43 @@ class Config:
         }
 
 
+def build_game_kwargs(config: "Config") -> dict[str, Any]:
+    """
+    根据配置构造 create_game() 的 kwargs（游戏无关）。
+
+    只有游戏真正需要时才传入 seed / reward_config：
+    - seed：仅当配置显式指定时传入；
+    - reward_config：仅当配置了稠密奖励（非空）时传入，避免不接收该参数的
+      新游戏（例如纯 AlphaZero 游戏）在 create_game 时出错。
+
+    Args:
+        config: 完整配置对象。
+
+    Returns:
+        可直接解包传给 create_game(game_name, **kwargs) 的参数字典。
+
+    Examples:
+        >>> game = create_game(config.game.name, **build_game_kwargs(config))
+    """
+    kwargs: dict[str, Any] = {"num_players": config.game.num_players}
+    if config.game.seed is not None:
+        kwargs["seed"] = config.game.seed
+    dense = dict(config.algorithm.dense_rewards or {})
+    if dense:
+        kwargs["reward_config"] = dense
+    return kwargs
+
+
 # ===== 导出 =====
 __all__ = [
     "Config",
     "GameConfig",
     "ModelConfig",
     "AlgorithmConfig",
-    "DenseRewardsConfig",
     "MCTSConfig",
     "MCTSSchedulerConfig",
     "TrainingConfig",
     "EvaluationConfig",
     "ExperimentConfig",
+    "build_game_kwargs",
 ]

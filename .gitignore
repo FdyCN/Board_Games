@@ -52,25 +52,19 @@ dmypy.json
 .ipynb_checkpoints
 *.ipynb
 
-# Temp docs
-docs/*
-
 # Backup scripts
 scripts/backup
 
-# Data and Logs
-data/checkpoints/*
-data/checkpoints/*.pth
-data/checkpoints/*.pt
-data/logs/*.log
-data/logs/*.jsonl
-data/logs/runs/
-data/games/*.pkl
-data/games/*.json
+# Data and Logs (按游戏分组: data/<game_name>/)
+data/*/checkpoints/*
+data/*/logs/*
+data/*/reports/*
+data/games/*
 
-# Keep directory structure but ignore contents
-!data/checkpoints/.gitkeep
-!data/logs/.gitkeep
+# 保留目录结构但忽略内容
+!data/*/checkpoints/.gitkeep
+!data/*/logs/.gitkeep
+!data/*/reports/.gitkeep
 !data/games/.gitkeep
 
 # Tensorboard

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-PPO 训练脚本
+PPO 训练脚本（游戏无关）。
 
-用于训练 Splendor 游戏的 PPO 智能体。
+从配置读取游戏名与构造参数，训练任意已注册桌游的 PPO 智能体。
 
 用法:
-    python scripts/train.py --config configs/splendor_ppo.yaml
-    python scripts/train.py --config configs/splendor_ppo.yaml --resume data/checkpoints/splendor_ppo/latest.pth
+    python scripts/train.py --config configs/splendor/splendor_ppo_mlp_medium_3p.yaml
+    python scripts/train.py --config configs/splendor/splendor_ppo_mlp_medium_3p.yaml \
+        --resume data/splendor/checkpoints/mlp_medium_3p_v1/latest.pth
 """
 
 import argparse
@@ -17,7 +18,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from configs.config_loader import Config
+from configs.config_loader import Config, build_game_kwargs
 from games.registry import create_game
 from models.model_factory import create_model
 from training.trainer import Trainer
@@ -52,25 +53,9 @@ def main():
     print(f"设备: {config.training.device}")
     print(f"{'='*60}\n")
 
-    # 创建游戏
+    # 创建游戏（游戏无关：游戏名与构造参数都来自配置）
     print("创建游戏...")
-    # 将 dense_rewards 配置转换为字典
-    reward_config = {
-        "take_gem": config.algorithm.dense_rewards.take_gem,
-        "discard_gem": config.algorithm.dense_rewards.discard_gem,
-        "reserve_card": config.algorithm.dense_rewards.reserve_card,
-        "get_gold": config.algorithm.dense_rewards.get_gold,
-        "buy_card_points": config.algorithm.dense_rewards.buy_card_points,
-        "buy_card_bonus": config.algorithm.dense_rewards.buy_card_bonus,
-        "noble_visit": config.algorithm.dense_rewards.noble_visit,
-        "win": config.algorithm.dense_rewards.win,
-        "step_penalty": config.algorithm.dense_rewards.step_penalty,
-    }
-    game = create_game(
-        config.game.name,
-        num_players=config.game.num_players,
-        reward_config=reward_config
-    )
+    game = create_game(config.game.name, **build_game_kwargs(config))
     print(f"  观察维度: {game.observation_shape}")
     print(f"  动作空间: {game.action_space_size}")
 

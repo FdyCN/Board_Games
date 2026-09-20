@@ -55,7 +55,7 @@ training:
   num_workers: 2  # 3 人局建议 2-3 个进程
 
   # Checkpoint 配置
-  checkpoint_dir: "data/checkpoints/splendor_ppo/mlp_medium_3p_v1"
+  checkpoint_dir: "data/splendor/checkpoints/mlp_medium_3p_v1"
   checkpoint_interval: 50  # 每 N 次迭代保存检查点
 
   # 日志配置

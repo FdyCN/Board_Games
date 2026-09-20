@@ -318,6 +318,24 @@ class GameInterface(ABC):
         print(f"游戏状态渲染未实现 (mode={mode})")
         return None
 
+    def game_kwargs(self) -> dict[str, Any]:
+        """
+        返回用于重建一个等价游戏实例的构造参数（用于多进程数据收集）。
+
+        多进程自对弈时，子进程需要用相同的参数重建游戏实例。默认只返回
+        num_players；带有种子或稠密奖励的游戏应覆盖本方法，把 seed /
+        reward_config 等一并返回，以保证子进程行为与主进程一致。
+
+        Returns:
+            可直接解包传给 create_game(game_name, **kwargs) 的参数字典。
+
+        Examples:
+            >>> game = SplendorGame(num_players=3, seed=42, reward_config={...})
+            >>> game.game_kwargs()
+            {'num_players': 3, 'seed': 42, 'reward_config': {...}}
+        """
+        return {"num_players": self.num_players}
+
     def get_winner(self, state: StateType) -> PlayerID:
         """
         获取获胜者 ID

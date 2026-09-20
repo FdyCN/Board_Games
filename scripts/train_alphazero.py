@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AlphaZero 训练脚本（替换 PPO）
+AlphaZero 训练脚本（替换 PPO，游戏无关）。
 
 参考 suragnair/alpha-zero-general 的训练循环：
     1. 自对弈：每步用 MCTS 搜索，把 (状态, MCTS 访问分布 π, 终局胜负 z) 存为训练样本；
@@ -9,9 +9,9 @@ AlphaZero 训练脚本（替换 PPO）
 
 用法:
     python scripts/train_alphazero.py \
-        --config configs/splendor_ppo_mlp_medium_3p.yaml \
+        --config configs/splendor/splendor_ppo_mlp_medium_3p.yaml \
         --iterations 50 --episodes 32 --simulations 25 \
-        --log-file data/logs/alphazero_3p.jsonl
+        --log-file data/splendor/logs/alphazero_3p.jsonl
 """
 
 import argparse
@@ -28,15 +28,10 @@ import torch
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from configs.config_loader import Config
+from configs.config_loader import Config, build_game_kwargs
 from games.registry import create_game
 from models.model_factory import create_model
 from training.mcts import MCTS
-
-REWARD_KEYS = [
-    "take_gem", "discard_gem", "reserve_card", "get_gold",
-    "buy_card_points", "buy_card_bonus", "noble_visit", "win", "step_penalty",
-]
 
 
 def self_play(game, model, mcts, num_simulations, temp_threshold, device):
@@ -93,9 +88,12 @@ def _worker_self_play(args):
     每个 worker 进程独立持有模型/游戏/MCTS，互不干扰。
     """
     (state_dict, num_games, num_simulations, mcts_batch_size,
-     num_players, encoder_type, model_config, reward_config) = args
+     game_name, num_players, encoder_type, model_config, reward_config) = args
 
-    game = create_game("splendor", num_players=num_players, reward_config=reward_config)
+    game_kwargs = {"num_players": num_players}
+    if reward_config:
+        game_kwargs["reward_config"] = reward_config
+    game = create_game(game_name, **game_kwargs)
     model = create_model(
         obs_dim=game.observation_shape[0], action_size=game.action_space_size,
         encoder_type=encoder_type, config=model_config,
@@ -130,11 +128,11 @@ def main():
     args = ap.parse_args()
 
     c = Config.from_yaml(args.config)
-    reward_config = {k: getattr(c.algorithm.dense_rewards, k) for k in REWARD_KEYS}
+    reward_config = dict(c.algorithm.dense_rewards)
 
     num_workers = args.num_workers or max(1, (os.cpu_count() or 4) - 1)
 
-    game = create_game("splendor", num_players=c.game.num_players, reward_config=reward_config)
+    game = create_game(c.game.name, **build_game_kwargs(c))
     model = create_model(
         obs_dim=game.observation_shape[0], action_size=game.action_space_size,
         encoder_type=c.model.encoder_type, config=c.model.config,
@@ -177,7 +175,7 @@ def main():
             if ng > 0:
                 tasks.append((
                     state_dict, ng, args.simulations, args.mcts_batch_size,
-                    c.game.num_players, c.model.encoder_type, c.model.config, reward_config,
+                    c.game.name, c.game.num_players, c.model.encoder_type, c.model.config, reward_config,
                 ))
 
         examples = []

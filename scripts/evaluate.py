@@ -9,13 +9,13 @@
 
 用法:
     # 评估单个模型 vs 随机 Agent
-    python scripts/evaluate.py --model data/checkpoints/model.pth --mode vs_random --games 100
+    python scripts/evaluate.py --model data/splendor/checkpoints/mlp_medium_3p_v1/latest.pth --mode vs_random --games 100
 
     # 多个模型锦标赛
     python scripts/evaluate.py --models model1.pth model2.pth model3.pth --mode tournament --games 200
 
     # 评估模型进化
-    python scripts/evaluate.py --checkpoints data/checkpoints/splendor_ppo/ --mode evolution --games 50
+    python scripts/evaluate.py --checkpoints data/splendor/checkpoints/mlp_medium_3p_v1/ --mode evolution --games 50
 """
 
 import argparse

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-MCTS 增强训练的 JSONL 收敛日志脚本（单进程）。
+MCTS 增强训练的 JSONL 收敛日志脚本（单进程，游戏无关）。
 
 用法:
     python scripts/train_mcts_convergence.py \
-        --config configs/splendor_mcts_ppo_3p.yaml \
-        --iterations 100 --log-file data/logs/mcts_3p.jsonl
+        --config configs/splendor/splendor_mcts_ppo_3p.yaml \
+        --iterations 100 --log-file data/splendor/logs/mcts_3p.jsonl
 """
 
 import argparse
@@ -19,16 +19,11 @@ import numpy as np
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from configs.config_loader import Config
+from configs.config_loader import Config, build_game_kwargs
 from games.registry import create_game
 from models.model_factory import create_model
 from training.trainer import Trainer
 from training.experience import ExperienceBatch, split_episodes_by_player
-
-REWARD_KEYS = [
-    "take_gem", "discard_gem", "reserve_card", "get_gold",
-    "buy_card_points", "buy_card_bonus", "noble_visit", "win", "step_penalty",
-]
 
 
 def main():
@@ -39,9 +34,9 @@ def main():
     args = ap.parse_args()
 
     c = Config.from_yaml(args.config)
-    reward_config = {k: getattr(c.algorithm.dense_rewards, k) for k in REWARD_KEYS}
+    reward_config = dict(c.algorithm.dense_rewards)
 
-    game = create_game("splendor", num_players=c.game.num_players, reward_config=reward_config)
+    game = create_game(c.game.name, **build_game_kwargs(c))
     model = create_model(
         obs_dim=game.observation_shape[0], action_size=game.action_space_size,
         encoder_type=c.model.encoder_type, config=c.model.config,

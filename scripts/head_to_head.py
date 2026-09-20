@@ -197,7 +197,7 @@ def load_models():
     # 本地模型
     from models.model_factory import create_model
     my_model = create_model(obs_dim=384, action_size=46, encoder_type="mlp", config="medium")
-    my_ckpt = torch.load(project_root / "data/checkpoints/splendor_ppo/mlp_medium_3p_v1/latest.pth",
+    my_ckpt = torch.load(project_root / "data/splendor/checkpoints/mlp_medium_3p_v1/latest.pth",
                          map_location="cpu", weights_only=False)
     my_model.load_state_dict(my_ckpt["model_state_dict"])
     my_model.eval()

@@ -376,6 +376,11 @@ class SplendorGame(GameInterface):
         return self._num_players
 
     @property
+    def seed(self) -> int | None:
+        """随机种子（可能为 None 表示随机）。"""
+        return self._seed
+
+    @property
     def observation_shape(self) -> tuple[int, ...]:
         """观察空间形状 (384 维向量)"""
         # 详细计算见 encoder.py
@@ -390,6 +395,19 @@ class SplendorGame(GameInterface):
         每个槽位语义稳定，便于策略网络学习稳定动作偏好。
         """
         return self.ACTION_SPACE_SIZE
+
+    def game_kwargs(self) -> dict:
+        """
+        返回重建等价游戏实例所需的构造参数（用于多进程自对弈）。
+
+        除 num_players 外，还需带上 seed 与 reward_config，否则子进程会
+        退回默认奖励系数，导致自定义稠密奖励失效。
+        """
+        kwargs = super().game_kwargs()
+        if self._seed is not None:
+            kwargs["seed"] = self._seed
+        kwargs["reward_config"] = dict(self._rewards)
+        return kwargs
 
     @property
     def current_player(self) -> int:

@@ -1,316 +1,176 @@
 # Board Games AI Training Framework
 
-一个通用的、可扩展的桌游自对弈强化学习训练框架。支持多智能体竞技、分布式训练、ELO评分系统和人机对战。
+一个通用的、可扩展的桌游自对弈强化学习训练框架。支持多智能体自对弈、PPO / AlphaZero（MCTS）、ELO 评估，并按游戏组织训练产物（模型、日志、报告）。
 
-## 项目特点
+> **文档导航**
+> - 本文档：**使用指南**（安装、训练、评估、接入新游戏）
+> - [CHANGELOG.md](./CHANGELOG.md)：Bug 修复与训练结果记录
+> - [ARCHITECTURE.md](./ARCHITECTURE.md)：架构设计与设计模式
+> - [DEVELOPMENT.md](./DEVELOPMENT.md)：开发规范、环境、测试
+> - [docs/ADDING_A_GAME.md](./docs/ADDING_A_GAME.md)：如何接入一个新桌游
 
-- **通用性设计**：基于抽象接口，轻松适配不同桌游（Splendor、UNO等）
-- **轻量化模型**：针对桌游场景优化，模型参数量 100K-1M，适合本地训练和部署
-- **多进程训练**：支持多核CPU并行自对弈，显著提升训练效率
-- **完整评估体系**：ELO 评分系统、锦标赛管理、性能指标追踪
-- **实时可视化**：【TBD】训练监控、对局回放、Web 人机对战界面
-- **灵活配置**：YAML 配置驱动，支持快速实验迭代
+## 特性
 
-## 训练进展（近期更新）
+- **游戏无关**：基于 `GameInterface` 抽象接口，训练/评估脚本从配置读取游戏名，接入新游戏零脚本改动
+- **多智能体自对弈**：支持 2-4 人对称自对弈，多进程并行数据收集
+- **两种训练范式**：PPO（GAE + clipped surrogate，稠密奖励）与 AlphaZero（MCTS + 策略 CE + 终局价值 MSE）
+- **固定动作空间**：动作映射到语义稳定的固定槽位，策略网络学到的偏好不会因状态变化而漂移
+- **轻量模型**：MLP / Attention 编码器 + 结构化策略头，参数量 100K-1M，适合本地 CPU 训练
+- **完整评估体系**：Arena 竞技场、ELO 评分、胜率/位置偏差统计
+- **按游戏组织的产物**：`data/<game>/checkpoints|logs|reports`，每个游戏独立存放
 
-Splendor AI 训练经过一轮深入重构，主要改进如下：
+## 支持的游戏
 
-### 关键 Bug 修复
-
-- **按玩家分组计算 GAE**：多人自对弈中，之前把 4 个玩家交错的轨迹当单一轨迹算优势函数，导致 advantage/value 全部变成噪声。现已改为按 `player_id` 分组、每个玩家独立计算 GAE。
-- **终局奖励正确注入**：之前"胜利 +1"只落在最后一位行动玩家身上，基本丢失。现改为终局零和奖励注入到每个玩家自己的最后一步。
-- **游戏结束条件修复**：之前要求"最后一位玩家也必须达到 15 分"才结束，导致对局在最后一轮无限拖长。现改为"有人达到 15 分后走完当前一轮即结束"，并加了回合上限防止死锁。
-- **多进程 reward_config 传递**：多进程收集数据时，子进程之前会退回默认奖励系数、忽略自定义稠密奖励。已修复。
-
-### 固定动作空间（46 个规范槽位）
-
-把之前"相对索引"（动作含义每步都在变）改成固定槽位，每个槽位语义稳定：
-
-```
-0-4 拿2同色 | 5-14 拿3不同色 | 15-26 保留明牌 | 27-29 保留牌堆
-30-41 买明牌 | 42-44 买保留 | 45 pass
-```
-
-### 结构化模型（逐卡共享评估器）
-
-参考 [alpha-zero-general](https://github.com/cestpasphoto/alpha-zero-general) 的 Splendor 实现，策略头对"买明牌/保留明牌/买保留牌"使用**共享卡评估器**（同一个线性层施加到每张卡），让模型学到"这张卡值不值得买"这个与位置无关的概念。
-
-### AlphaZero 训练循环
-
-新增 `scripts/train_alphazero.py`：自对弈用 MCTS 搜索，策略损失 = CE(policy, MCTS 目标)，价值损失 = MSE(value, 终局胜负)。AlphaZero 的价值函数能学到"谁赢"（value_loss 从 ~1.0 降到 ~0.17），而 PPO 的 GAE 价值在对称自对弈中几乎学不会。
-
-> ⚠️ 注：AlphaZero 的策略网络需要**数百次模拟 + 上千次迭代**才能反超 PPO。本仓库默认配置（50 sims、16 局/迭代）跑 500 迭代后，价值函数学到了，但策略网络仍未学会高效买卡，对弈会打到回合上限；如需完整 AlphaZero，需要更强的算力（数百 sims + 数千迭代，参考实现用 numba 加速）。当前**PPO 仍是可用效果最好的模型**。
-
-### 当前结果（3 人对局，PPO）
-
-| 指标 | 数值 |
-|---|---|
-| 平均回合数 | ~87（自对弈）/ ~90（vs 随机） |
-| tier1 买卡占比 | ~61%（修复前 ~69%） |
-| 对随机 agent 胜率 | **98%**（100 局） |
-
-### 与开源模型对比
-
-引入 [cestpasphoto/alpha-zero-general](https://github.com/cestpasphoto/alpha-zero-general)（git submodule）的 3 人预训练模型做基准：
-
-**1. 分别 vs 2 个随机对手（贪婪/确定性策略）**：
-
-| 模型 | vs 2 随机 胜率 | 平均回合 |
-|---|---|---|
-| 开源 AlphaZero 3 人预训练 | 100% | 97.7 |
-| 本项目 PPO（结构化模型） | 98% | 90.5 |
-
-**2. 直接 head-to-head（本地模型 + 开源模型 + 1 随机，1000 局，随机洗牌座位）**：
-
-| 模型 | 胜局 | 胜率 |
-|---|---|---|
-| 开源 AlphaZero | 509 | 50.9% |
-| 本项目 PPO | 491 | 49.1% |
-| 随机 | 0 | 0% |
-
-**模型大小对比**：
-
-| 模型 | 参数量 | 结构 |
-|---|---|---|
-| 本项目 PPO（mlp medium） | 307,672 | 扁平 MLP |
-| 开源 AlphaZero（v80） | 219,911 | MobileNetV3 风格 1D 残差块 |
-
-结论：本地 PPO 模型与开源 AlphaZero 模型**直接对打基本打平（49.1% vs 50.9%，统计不显著）**，vs 随机也接近（98% vs 100%），且对局更快结束。值得注意的是开源模型**参数量更小**（22 万 vs 31 万），差距来自"结构化架构 + AlphaZero 训练"而非模型大小。可用 `scripts/compare_with_open_source.py`（vs 随机）和 `scripts/head_to_head.py`（直接对打）复现。
+| 游戏 | 状态 | 玩家数 | 模型 | 备注 |
+|------|------|--------|------|------|
+| **Splendor** | ✅ 已实现 | 2-4 | MLP / Attention | 首个完整实现，PPO 已收敛（vs 随机 98%） |
+| 情书 / 政变疑云 | 📋 待定 | 2-4 | — | 见 [docs/ADDING_A_GAME.md](./docs/ADDING_A_GAME.md) 的适配评估 |
 
 ## 快速开始
 
-### 开发环境
+### 环境要求
 
 - Python 3.10+
-- PyTorch 2.0+ (支持 MPS 加速)
-- Apple M4 Max 64GB
+- PyTorch 2.0+（可选 MPS 加速；本项目 CPU 训练已足够快）
 
 ### 安装
 
 ```bash
-# 克隆仓库
 git clone <repo_url>
 cd Board_Games
 
-# 创建虚拟环境
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate      # Windows: venv\Scripts\activate
 
-# 安装依赖
 pip install -r requirements.txt
-
-# 开发模式安装
 pip install -e .
 ```
 
-### 训练你的第一个 Agent
+### 训练一个模型
+
+训练脚本是**游戏无关**的：游戏名、构造参数、奖励配置都从 YAML 配置读取。
 
 ```bash
-# 训练 Splendor 3人对弈模型（PPO，带 JSONL 收敛日志）
+# PPO 训练（JSONL 收敛日志）
 python scripts/train_convergence.py \
-    --config configs/splendor_ppo_mlp_medium_3p.yaml \
+    --config configs/splendor/splendor_ppo_mlp_medium_3p.yaml \
     --iterations 300 --episodes 128 \
-    --log-file data/logs/convergence_3p.jsonl
+    --log-file data/splendor/logs/convergence_3p.jsonl
 
-# 使用 AlphaZero 训练（MCTS + 终局胜负价值）
+# AlphaZero 训练（MCTS + 终局胜负价值）
 python scripts/train_alphazero.py \
-    --config configs/splendor_ppo_mlp_medium_3p.yaml \
+    --config configs/splendor/splendor_ppo_mlp_medium_3p.yaml \
     --iterations 500 --episodes 16 --simulations 50 \
-    --log-file data/logs/alphazero_3p.jsonl
+    --log-file data/splendor/logs/alphazero_3p.jsonl
 
 # 对手池训练（混合历史 checkpoint 做对手）
 python scripts/train_opponent_pool.py \
-    --config configs/splendor_ppo_mlp_medium_3p.yaml \
+    --config configs/splendor/splendor_ppo_mlp_medium_3p.yaml \
     --iterations 500 --episodes 128 \
-    --log-file data/logs/pool_3p.jsonl
-
-# 评估模型性能
-python scripts/evaluate.py --checkpoint data/checkpoints/splendor_ppo/latest.pth
-
-# 人机对战
-python scripts/play_human.py --game splendor
+    --log-file data/splendor/logs/convergence_3p_pool.jsonl
 ```
 
-#### 多进程训练配置
+训练过程中，模型检查点保存到配置里的 `training.checkpoint_dir`（例如 `data/splendor/checkpoints/mlp_medium_3p_v1/`），TensorBoard 事件保存在该目录的 `tensorboard/` 子目录。
 
-在配置文件中调整 `num_workers` 参数以启用多核并行训练：
-
-```yaml
-training:
-  num_workers: 4  # 并行进程数（1=单进程，>1=多进程）
-  episodes_per_iteration: 50
-  device: "cpu"  # 多进程训练推荐使用CPU
-```
-
-**性能建议**：
-- 设置 `num_workers` 为 CPU 核心数的 50-75%
-- 例如 8 核 CPU 推荐设置为 4-6 workers
-- 多进程可将训练速度提升 2-4 倍
-
-#### TensorBoard 可视化
-
-训练过程自动记录到 TensorBoard，可以实时监控训练进度：
+### 评估模型
 
 ```bash
-# 启动 TensorBoard
-tensorboard --logdir data/checkpoints/splendor_ppo/mlp_medium/tensorboard
+# 单个模型 vs 随机 Agent
+python scripts/evaluate.py \
+    --model data/splendor/checkpoints/mlp_medium_3p_v1/latest.pth \
+    --mode vs_random --games 100
 
-# 在浏览器打开 http://localhost:6006
+# 多个模型锦标赛
+python scripts/evaluate.py \
+    --models model1.pth model2.pth model3.pth \
+    --mode tournament --games 200
+
+# 检查点进化曲线
+python scripts/evaluate.py \
+    --checkpoints data/splendor/checkpoints/mlp_medium_3p_v1/ \
+    --mode evolution --games 50
 ```
 
-**监控指标**：
-- **Loss**: policy_loss, value_loss, entropy
-- **Performance**: mean_reward, mean_episode_length
-- **PPO**: kl_divergence, clip_fraction, learning_rate
-- **WinRate**: 各位置胜率 (position_0, position_1, ...)
-- **PositionBias**: win_rate_std, win_rate_range
+### 与开源模型对比（Splendor 专用）
+
+仓库引入了 [cestpasphoto/alpha-zero-general](https://github.com/cestpasphoto/alpha-zero-general) 作为 git submodule 做基准：
+
+```bash
+# vs 随机（本地 PPO vs 开源 AlphaZero）
+python scripts/compare_with_open_source.py
+
+# 直接 head-to-head（本地 PPO vs 开源 AlphaZero + 随机，同场对打）
+python scripts/head_to_head.py
+```
+
+## 数据与产物目录
+
+所有训练产物按游戏分组，互不干扰：
+
+```
+data/
+  <game_name>/                 # 例如 splendor
+    checkpoints/               # 模型检查点
+      <run_name>/              # 例如 mlp_medium_3p_v1
+        latest.pth
+        checkpoint_iter_*.pth
+        tensorboard/           # TensorBoard 事件
+    logs/                      # JSONL 训练日志 + stdout 日志
+      <run_name>.jsonl
+    reports/                   # 评估 / 基准报告（可选）
+```
+
+路径辅助函数见 `core/paths.py`（`run_checkpoint_dir`、`default_log_path` 等）。新增游戏时用 `scripts/new_game.py` 会自动建好这套目录。
 
 ## 项目结构
 
 ```
 Board_Games/
-├── core/                   # 核心抽象层（游戏/Agent 接口）
-├── games/                  # 游戏实现（Splendor、UNO 等）
-├── agents/                 # Agent 实现（随机、神经网络、人类）
-├── models/                 # 神经网络架构（编码器、策略头、价值头）
-├── training/               # 训练框架（PPO、自对弈、分布式）
-├── evaluation/             # 评估系统（Arena、ELO、锦标赛）
-├── visualization/          # 可视化（训练监控、游戏渲染、Web 界面）
-├── configs/                # 配置文件
-├── scripts/                # 命令行工具
-└── tests/                  # 单元测试
+├── core/                   # 抽象接口（GameInterface/AgentInterface）+ 路径辅助
+├── games/                  # 游戏实现（每个游戏一个子目录）
+│   └── splendor/           #   Splendor 引擎（game/state/actions/encoder/RULES）
+├── agents/                 # Agent（随机、神经网络）
+├── models/                 # 神经网络（编码器、策略/价值/胜负头、模型工厂）
+├── training/               # 训练框架（PPO、自对弈 worker、MCTS、经验缓冲）
+├── evaluation/             # 评估（Arena、ELO、指标）
+├── configs/                # 配置文件（按游戏分目录，如 configs/splendor/）
+├── scripts/                # 命令行工具（train_*、evaluate、new_game 脚手架）
+├── docs/                   # 主题文档（接入新游戏、MCTS 等）
+├── tests/                  # 单元测试
+└── third_party/            # git submodule（开源基准）
 ```
 
-## 支持的游戏
+## 接入一个新游戏
 
-| 游戏 | 状态 | 玩家数 | 模型类型 | 备注 |
-|------|------|--------|----------|------|
-| **Splendor** | 🚧 开发中 | 2-4 | Attention/MLP | 首个实现游戏 |
-| **UNO** | 📋 计划中 | 2-4 | Attention/MLP | - |
+最小步骤（详见 [docs/ADDING_A_GAME.md](./docs/ADDING_A_GAME.md)）：
 
-## 架构文档
+1. `python scripts/new_game.py <game_name> --players N` 生成骨架
+2. 实现 `games/<game_name>/game.py`（继承 `GameInterface`，`@register_game` 注册）
+3. 实现 `games/<game_name>/encoder.py`（状态 → 固定维度观察）
+4. 补全测试，用 `configs/<game_name>/<game_name>_ppo.yaml` 训练
 
-- [架构设计](./ARCHITECTURE.md) - 详细的系统架构和设计模式
-- [开发指南](./DEVELOPMENT.md) - 开发进度和任务追踪
-- [API 文档](./API.md) - 核心接口和使用示例
+训练脚本无需修改——它们从配置读取 `game.name` 与构造参数。
+
+## 配置说明
+
+配置为 YAML，分六段：`game` / `model` / `algorithm` / `training` / `evaluation` / `experiment`。示例见 `configs/splendor/`。要点：
+
+- `game.name`：游戏注册名，训练脚本据此调用 `create_game`
+- `algorithm.dense_rewards`：PPO 稠密奖励，是**自由字典**，键由每个游戏自己定义
+- `training.checkpoint_dir`：检查点目录（建议按 `data/<game>/checkpoints/<run>` 组织）
 
 ## 技术栈
 
-- **深度学习**：PyTorch 2.x (MPS 加速)
-- **强化学习**：PPO (Proximal Policy Optimization) + MCTS Enhancement
-- **并行计算**：torch.multiprocessing
-- **可视化**：TensorBoard / Weights & Biases
-- **Web 框架**：FastAPI + React
-- **配置管理**：YAML + Hydra
+- **深度学习**：PyTorch 2.x
+- **强化学习**：PPO（GAE + clipped surrogate）、AlphaZero（MCTS）
+- **并行**：torch.multiprocessing
+- **可视化**：TensorBoard
+- **配置**：YAML
 
-## 开发路线图
+## 贡献
 
-- [x] 项目架构设计
-- [x] 核心抽象层实现
-- [x] Splendor 游戏引擎
-- [x] 神经网络模型
-- [x] PPO 训练框架
-- [x] **MCTS-Enhanced PPO** (v1.0 已完成)
-- [x] TensorBoard 可视化
-- [x] ELO 评分系统
-- [x] 固定动作空间（46 个规范槽位）
-- [x] 结构化模型（逐卡共享评估器）
-- [x] AlphaZero 训练循环
-- [ ] 分布式自对弈
-- [ ] Web 人机对战界面
-
-详细进度请查看 [DEVELOPMENT.md](./DEVELOPMENT.md)
-
-## MCTS-Enhanced PPO Training 🆕
-
-本框架现已支持 **MCTS-Enhanced PPO**，一种混合训练算法，结合了 PPO 的快速学习能力和 MCTS 的策略改进能力。
-
-### 核心特性
-
-- ✅ **渐进式 MCTS 调度**: 从纯 PPO 平滑过渡到 MCTS-增强训练
-- ✅ **灵活配置**: 支持动态调整 MCTS 模拟次数
-- ✅ **完整测试**: 包含单元测试和集成测试
-- ✅ **生产就绪**: 所有已知 bug 已修复，系统稳定
-
-### 快速开始 MCTS 训练
-
-```bash
-# 使用 MCTS 增强的 PPO 训练
-python scripts/train.py --config configs/splendor_mcts_ppo.yaml
-
-# 或使用快捷脚本
-./scripts/train_mcts.sh
-```
-
-### MCTS 训练阶段
-
-| 迭代范围 | MCTS 模拟次数 | 说明 |
-|---------|--------------|------|
-| 0-199   | 0 (纯 PPO)   | 快速探索，建立基础策略 |
-| 200-499 | 50           | 引入 MCTS，开始改进决策 |
-| 500-799 | 100          | 增强阶段，深化策略质量 |
-| 800+    | 200          | 精炼阶段，高质量策略训练 |
-
-### 文档
-
-- 📘 [MCTS 训练指南](./docs/MCTS_TRAINING.md) - 完整使用说明
-- 📗 [MCTS 实现总结](./docs/MCTS_IMPLEMENTATION_SUMMARY.md) - 技术细节
-- 📙 [MCTS 待改进项](./docs/MCTS_TODO.md) - 优化建议
-- 📕 [Bug 修复记录](./docs/BUGFIXES.md) - 问题解决历史
-- 🚀 [准备就绪指南](./docs/MCTS_READY.md) - 开始训练前必读
-
-### 性能预期
-
-MCTS-Enhanced PPO 相比纯 PPO 预期改进：
-- **平均步数**: 从 ~150 降到 100-120
-- **位置偏差**: 胜率标准差从 >0.2 降到 <0.15
-- **策略质量**: 更准确的价值估计和决策
-
-## 示例：添加新游戏
-
-```python
-# games/my_game/game.py
-from core.game_interface import GameInterface
-
-@register_game("my_game")
-class MyGame(GameInterface):
-    def reset(self) -> GameState:
-        # 实现游戏重置逻辑
-        pass
-
-    def step(self, action):
-        # 实现游戏步进逻辑
-        pass
-
-    # 实现其他抽象方法...
-```
-
-## 贡献指南
-
-欢迎贡献！请遵循以下流程：
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
+欢迎贡献！流程：Fork → 特性分支 → 提交（Conventional Commits）→ Pull Request。
 
 ## 许可证
 
 MIT License
-
-## 致谢
-
-- AlphaZero 论文启发了整体架构
-- OpenAI Gym 提供了环境接口设计参考
-- PettingZoo 提供了多智能体环境设计思路
-
-## 联系方式
-
-- Issue Tracker: [GitHub Issues](./issues)
-- 讨论区: [GitHub Discussions](./discussions)
-
----
-
-**当前版本**: v0.6.0-dev (固定动作空间 + 结构化模型 + AlphaZero)
-**最后更新**: 2025-12

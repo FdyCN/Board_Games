@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-训练并输出结构化 JSONL 指标日志，用于收敛分析。
+训练并输出结构化 JSONL 指标日志，用于收敛分析（游戏无关）。
 
 用法:
     python scripts/train_convergence.py \
-        --config configs/splendor_ppo_mlp_medium_3p.yaml \
+        --config configs/splendor/splendor_ppo_mlp_medium_3p.yaml \
         --iterations 300 \
         --episodes 128 \
-        --log-file data/logs/convergence_3p.jsonl \
+        --log-file data/splendor/logs/convergence_3p.jsonl \
         --checkpoint-interval 50
 """
 
@@ -22,23 +22,11 @@ import numpy as np
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from configs.config_loader import Config
+from configs.config_loader import Config, build_game_kwargs
 from games.registry import create_game
 from models.model_factory import create_model
 from training.trainer import Trainer
 from training.experience import ExperienceBatch, split_episodes_by_player
-
-REWARD_KEYS = [
-    "take_gem",
-    "discard_gem",
-    "reserve_card",
-    "get_gold",
-    "buy_card_points",
-    "buy_card_bonus",
-    "noble_visit",
-    "win",
-    "step_penalty",
-]
 
 
 def main():
@@ -53,13 +41,9 @@ def main():
     c = Config.from_yaml(args.config)
     episodes_per_iter = args.episodes if args.episodes is not None else c.training.episodes_per_iteration
 
-    reward_config = {k: getattr(c.algorithm.dense_rewards, k) for k in REWARD_KEYS}
+    reward_config = dict(c.algorithm.dense_rewards)
 
-    game = create_game(
-        "splendor",
-        num_players=c.game.num_players,
-        reward_config=reward_config,
-    )
+    game = create_game(c.game.name, **build_game_kwargs(c))
     model = create_model(
         obs_dim=game.observation_shape[0],
         action_size=game.action_space_size,

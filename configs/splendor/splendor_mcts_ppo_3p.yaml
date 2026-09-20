@@ -51,7 +51,7 @@ training:
   device: "cpu"
   use_position_augmentation: false
   num_workers: 1               # MCTS 暂只支持单进程
-  checkpoint_dir: "data/checkpoints/splendor_mcts_ppo/mlp_small_3p_v1"
+  checkpoint_dir: "data/splendor/checkpoints/mlp_small_3p_v1"
   checkpoint_interval: 50
   log_interval: 1
   verbose: true

@@ -68,7 +68,7 @@ training:
   num_workers: 1  # 并行进程数 (MCTS 暂不支持多进程,设为1)
 
   # Checkpoint 配置
-  checkpoint_dir: "data/checkpoints/splendor_mcts_ppo/mlp_medium_v1"
+  checkpoint_dir: "data/splendor/checkpoints/mlp_medium_v1"
   checkpoint_interval: 50  # 每 N 次迭代保存检查点
 
   # 日志配置

@@ -12,9 +12,9 @@
 
 用法:
     python scripts/train_opponent_pool.py \
-        --config configs/splendor_ppo_mlp_medium_3p.yaml \
+        --config configs/splendor/splendor_ppo_mlp_medium_3p.yaml \
         --iterations 500 --episodes 128 \
-        --log-file data/logs/convergence_3p_pool.jsonl \
+        --log-file data/splendor/logs/convergence_3p_pool.jsonl \
         --snapshot-interval 20 --pool-size 5 --opponent-prob 0.5 \
         --checkpoint-interval 50
 """
@@ -32,18 +32,13 @@ import numpy as np
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from configs.config_loader import Config
+from configs.config_loader import Config, build_game_kwargs
 from games.registry import create_game
 from models.model_factory import create_model
 from agents.neural_agent import NeuralAgent
 from training.trainer import Trainer
 from training.experience import ExperienceBatch
 from training.self_play_worker import collect_episode
-
-REWARD_KEYS = [
-    "take_gem", "discard_gem", "reserve_card", "get_gold",
-    "buy_card_points", "buy_card_bonus", "noble_visit", "win", "step_penalty",
-]
 
 
 def _make_model(obs_dim, action_size, encoder_type, model_config):
@@ -67,9 +62,9 @@ def main():
 
     c = Config.from_yaml(args.config)
     episodes_per_iter = args.episodes or c.training.episodes_per_iteration
-    reward_config = {k: getattr(c.algorithm.dense_rewards, k) for k in REWARD_KEYS}
+    reward_config = dict(c.algorithm.dense_rewards)
 
-    game = create_game("splendor", num_players=c.game.num_players, reward_config=reward_config)
+    game = create_game(c.game.name, **build_game_kwargs(c))
     model = _make_model(game.observation_shape[0], game.action_space_size,
                         c.model.encoder_type, c.model.config)
 
