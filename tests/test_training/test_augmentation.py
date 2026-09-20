@@ -164,13 +164,13 @@ def test_entropy_with_augmentation():
 
     # 计算熵
     with torch.no_grad():
-        values1, log_probs1, entropy1 = model.evaluate_actions(
+        values1, log_probs1, entropy1, outcome_logits1 = model.evaluate_actions(
             batch_no_aug.observations,
             batch_no_aug.actions,
             batch_no_aug.legal_actions_masks,
         )
 
-        values2, log_probs2, entropy2 = model.evaluate_actions(
+        values2, log_probs2, entropy2, outcome_logits2 = model.evaluate_actions(
             batch_with_aug.observations,
             batch_with_aug.actions,
             batch_with_aug.legal_actions_masks,

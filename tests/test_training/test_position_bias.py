@@ -23,7 +23,7 @@ from agents.random_agent import RandomAgent
 from training.self_play_worker import collect_episode
 
 
-def test_position_bias(
+def run_position_bias(
     checkpoint_path: str,
     num_games: int = 100,
     encoder_type: str = "mlp",
@@ -263,7 +263,7 @@ def main():
     args = parser.parse_args()
 
     # 运行测试
-    stats = test_position_bias(
+    stats = run_position_bias(
         checkpoint_path=args.checkpoint,
         num_games=args.num_games,
         encoder_type=args.encoder,

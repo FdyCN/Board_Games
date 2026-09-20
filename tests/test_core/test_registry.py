@@ -6,7 +6,7 @@
 import numpy as np
 import pytest
 
-from core.exceptions import DuplicateRegistrationError, GameNotFoundError
+from core.exceptions import GameNotFoundError
 from core.game_interface import GameInterface
 from games.registry import (
     GAME_REGISTRY,
@@ -112,17 +112,20 @@ def test_register_game(clean_registry):
 
 
 def test_register_game_duplicate(clean_registry):
-    """测试重复注册抛出异常"""
+    """测试重复注册：现在发出警告并覆盖（不再抛异常）"""
 
     @register_game("test_game")
     class TestGame1(SimpleTestGame):
         pass
 
-    with pytest.raises(DuplicateRegistrationError):
+    with pytest.warns(UserWarning):
 
         @register_game("test_game")
         class TestGame2(SimpleTestGame):
             pass
+
+    # 覆盖后注册表指向新类
+    assert GAME_REGISTRY["test_game"] is TestGame2
 
 
 def test_register_non_game_interface(clean_registry):
