@@ -1,0 +1,51 @@
+# 情书（Love Letter）PPO 训练配置（3 人对局）
+
+game:
+  name: "love_letter"
+  num_players: 3
+  seed: null
+
+model:
+  encoder_type: "mlp"     # 选项: "mlp", "attention"
+  config: "medium"        # 选项: "small", "medium", "large"
+
+algorithm:
+  name: "ppo"
+  learning_rate: 0.0001
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.1
+  value_clip_epsilon: 0.2
+  value_coef: 0.5
+  entropy_coef: 0.01
+  max_grad_norm: 0.5
+  use_value_clip: true
+  outcome_coef: 1.0
+
+  # 稠密奖励（键由本游戏定义）
+  dense_rewards:
+    round_win: 0.5        # 打牌直接赢下本轮
+    step_penalty: -0.01   # 每步小惩罚，鼓励尽快结束
+
+training:
+  num_iterations: 500
+  episodes_per_iteration: 128
+  update_epochs: 4
+  minibatch_size: 256
+  device: "cpu"
+  use_position_augmentation: false
+  num_workers: 2
+  checkpoint_dir: "data/love_letter/checkpoints/love_letter_3p_v1"
+  checkpoint_interval: 50
+  log_interval: 1
+  verbose: true
+
+evaluation:
+  eval_interval: 50
+  eval_episodes: 100
+  deterministic: true
+
+experiment:
+  name: "love_letter_ppo_3p_v1"
+  tags: ["love_letter", "ppo", "3p"]
+  notes: "情书 3 人对局，PPO 首版"

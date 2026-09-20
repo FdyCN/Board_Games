@@ -172,6 +172,9 @@ pytest tests/test_games/test_love_letter.py -v
 
 ## 适配评估：情书 vs 政变疑云
 
+> **更新**：情书（Love Letter）已按本文档实现，见 `games/love_letter/` 与
+> `configs/love_letter/`。政变疑云（Coup）作为下一个候选，评估如下。
+
 两者都适合作为「第二个游戏」，但难度不同：
 
 | 维度 | 情书（Love Letter） | 政变疑云（Coup） |

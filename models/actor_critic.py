@@ -80,9 +80,15 @@ class ActorCritic(nn.Module):
         else:
             raise ValueError(f"未知的编码器类型: {encoder_type}")
 
-        # 逐卡特征编码器（共享卡评估器用）：把每张卡的 15 维特征映射到 card_dim
+        # 逐卡特征编码器（共享卡评估器用）：把每张卡的 15 维特征映射到 card_dim。
+        # 这是 Splendor 专用的结构化设计（action_size==46 时启用）；
+        # 其他游戏走 flat 策略头，不做逐卡切片。
         self.card_dim = head_intermediate_dim
-        self.card_encoder = nn.Linear(CARD_FEAT_DIM, self.card_dim)
+        self._use_card_encoder = action_size == 46
+        if self._use_card_encoder:
+            self.card_encoder = nn.Linear(CARD_FEAT_DIM, self.card_dim)
+        else:
+            self.card_encoder = None
 
         # 创建策略头（Actor）
         self.policy_head = PolicyHead(
@@ -107,17 +113,19 @@ class ActorCritic(nn.Module):
             dropout=dropout,
         )
 
-    def _encode_cards(self, obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def _encode_cards(self, obs: torch.Tensor) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """
-        从观察向量中抽取逐卡特征并编码。
+        从观察向量中抽取逐卡特征并编码（仅 Splendor 结构化模型）。
 
         Args:
             obs: 观察向量 (batch_size, obs_dim)
 
         Returns:
-            open_card_embeds: (batch_size, 12, card_dim)
-            reserved_card_embeds: (batch_size, 3, card_dim)
+            open_card_embeds: (batch_size, 12, card_dim) 或 None（非结构化模型）
+            reserved_card_embeds: (batch_size, 3, card_dim) 或 None
         """
+        if not self._use_card_encoder:
+            return None, None
         reserved = obs[:, RESERVED_CARDS_START:RESERVED_CARDS_END].reshape(-1, 3, CARD_FEAT_DIM)
         open_cards = obs[:, OPEN_CARDS_START:OPEN_CARDS_END].reshape(-1, 12, CARD_FEAT_DIM)
         open_embeds = self.card_encoder(open_cards)
