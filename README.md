@@ -60,15 +60,22 @@ Splendor AI 训练经过一轮深入重构，主要改进如下：
 | 开源 AlphaZero 3 人预训练 | 100% | 97.7 |
 | 本项目 PPO（结构化模型） | 98% | 90.5 |
 
-**2. 直接 head-to-head（本地模型 + 开源模型 + 1 随机，100 局，随机洗牌座位）**：
+**2. 直接 head-to-head（本地模型 + 开源模型 + 1 随机，1000 局，随机洗牌座位）**：
 
 | 模型 | 胜局 | 胜率 |
 |---|---|---|
-| 开源 AlphaZero | 55 | **55%** |
-| 本项目 PPO | 45 | 45% |
+| 开源 AlphaZero | 509 | 50.9% |
+| 本项目 PPO | 491 | 49.1% |
 | 随机 | 0 | 0% |
 
-结论：本地 PPO 模型已接近开源 AlphaZero 的强度（head-to-head 45% vs 55%，vs 随机 98% vs 100%），且对局更快结束。可用 `scripts/compare_with_open_source.py`（vs 随机）和 `scripts/head_to_head.py`（直接对打）复现。
+**模型大小对比**：
+
+| 模型 | 参数量 | 结构 |
+|---|---|---|
+| 本项目 PPO（mlp medium） | 307,672 | 扁平 MLP |
+| 开源 AlphaZero（v80） | 219,911 | MobileNetV3 风格 1D 残差块 |
+
+结论：本地 PPO 模型与开源 AlphaZero 模型**直接对打基本打平（49.1% vs 50.9%，统计不显著）**，vs 随机也接近（98% vs 100%），且对局更快结束。值得注意的是开源模型**参数量更小**（22 万 vs 31 万），差距来自"结构化架构 + AlphaZero 训练"而非模型大小。可用 `scripts/compare_with_open_source.py`（vs 随机）和 `scripts/head_to_head.py`（直接对打）复现。
 
 ## 快速开始
 
