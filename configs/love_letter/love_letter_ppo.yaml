@@ -24,8 +24,9 @@ algorithm:
 
   # 稠密奖励（键由本游戏定义）
   dense_rewards:
-    round_win: 0.5        # 打牌直接赢下本轮
-    step_penalty: -0.01   # 每步小惩罚，鼓励尽快结束
+    round_win: 0.5            # 打牌直接赢下本轮
+    eliminate_opponent: 0.3   # 消灭一个对手（卫兵猜中/男爵/王子弃公主）
+    step_penalty: -0.01       # 每步小惩罚，鼓励尽快结束
 
 training:
   num_iterations: 500
@@ -35,7 +36,7 @@ training:
   device: "cpu"
   use_position_augmentation: false
   num_workers: 2
-  checkpoint_dir: "data/love_letter/checkpoints/love_letter_3p_v1"
+  checkpoint_dir: "data/love_letter/checkpoints/love_letter_3p_v2"
   checkpoint_interval: 50
   log_interval: 1
   verbose: true
@@ -46,6 +47,6 @@ evaluation:
   deterministic: true
 
 experiment:
-  name: "love_letter_ppo_3p_v1"
-  tags: ["love_letter", "ppo", "3p"]
-  notes: "情书 3 人对局，PPO 首版"
+  name: "love_letter_ppo_3p_v2"
+  tags: ["love_letter", "ppo", "3p", "relative-obs"]
+  notes: "情书 3 人对局，PPO v2（相对玩家视角 + 消灭对手奖励）"

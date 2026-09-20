@@ -18,7 +18,7 @@ class PlayCardAction:
 
     Attributes:
         card: 要打出的卡牌值（1-8）。
-        target: 目标玩家 ID（-1 表示无目标）。
+        target: 目标玩家的「相对编号」（0=自己，r=顺时针第 r 个玩家；-1 表示无目标/空打）。
         guess: 卫兵的猜测卡牌值（2-8；-1 表示非卫兵或未指定）。
     """
 

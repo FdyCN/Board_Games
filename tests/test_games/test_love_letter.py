@@ -53,12 +53,12 @@ def test_game_registered():
 
 def test_action_space_size():
     game = LoveLetterGame(num_players=3)
-    assert game.action_space_size == 7 + 11 * 3  # 40
+    assert game.action_space_size == 11 * 3 - 3  # 30
 
 
 def test_observation_shape():
     game = LoveLetterGame(num_players=3)
-    assert game.observation_shape == (18 + 12 * 3,)  # 54
+    assert game.observation_shape == (18 + 11 * 3,)  # 51
 
 
 def test_initial_state():
@@ -237,6 +237,35 @@ def test_prince_on_princess_eliminates():
     game._play_card(state, 0, PlayCardAction(PRINCE, target=1))
     assert state.eliminated[1]
     assert state.hands[1] == []
+
+
+def test_relative_target_mapping():
+    """相对目标：当前玩家为 p 时，target=r 指向绝对玩家 (p+r)%n。"""
+    game = LoveLetterGame(num_players=3)
+    state = _make_state()
+    state.current_player = 1
+    state.hands[1] = [BARON, HANDMAID]  # 玩家1 打出男爵，剩侍女(4)
+    state.hands[2] = [PRINCESS]         # 相对 target=1 → 绝对 (1+1)%3 = 2
+    game._play_card(state, 1, PlayCardAction(BARON, target=1))
+    # 侍女(4) < 公主(8) → 玩家1 出局
+    assert state.eliminated[1]
+    assert not state.eliminated[2]
+
+
+def test_eliminate_opponent_reward():
+    """消灭对手应给予 eliminate_opponent 稠密奖励。"""
+    game = LoveLetterGame(num_players=3, reward_config={
+        "round_win": 0.5, "eliminate_opponent": 0.3, "step_penalty": -0.01,
+    })
+    state = _make_state()
+    state.deck = [1, 2, 3]  # 保证不会因牌堆空结束本轮
+    state.hands[0] = [GUARD, HANDMAID]
+    state.hands[1] = [PRIEST]  # 神父 = 2
+    state.hands[2] = [KING]
+    game._state = state
+    new_state, rewards, done, info = game.step(PlayCardAction(GUARD, target=1, guess=PRIEST))
+    assert new_state.eliminated[1]
+    assert info["dense_reward"] == pytest.approx(-0.01 + 0.3)
 
 
 if __name__ == "__main__":

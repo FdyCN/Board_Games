@@ -8,13 +8,13 @@
 - 轮结束条件：只剩 1 名玩家存活，或牌堆在回合开始时为空（比手牌大小）。
 - 赢得一轮得 1 个爱心标记，先攒够目标标记数者赢得整局（3 人 = 5 个）。
 
-动作空间（固定槽位，共 7 + 11n 个）：
+动作空间（固定槽位，共 11n - 3 个；target 为「相对玩家编号」，0=自己）：
     0-2   无目标牌：侍女、女伯爵、公主
-    3-5   神父（空打 + n 个目标）
-    6-8   男爵（空打 + n 个目标）
-    9-11  国王（空打 + n 个目标）
-    12..  王子（n 个目标，含自己）
-    ..    卫兵（1 空打 + n×7 目标×猜测）
+    3-5   神父（1 空打 + n-1 个相对目标）
+    6-8   男爵（1 空打 + n-1 个相对目标）
+    9-11  国王（1 空打 + n-1 个相对目标）
+    12..  王子（n 个相对目标，0=自己）
+    ..    卫兵（1 空打 + (n-1)×7 相对目标×猜测）
 """
 
 from __future__ import annotations
@@ -67,8 +67,9 @@ class LoveLetterGame(GameInterface):
 
         # 默认奖励（PPO 稠密奖励，可被配置覆盖）
         self._rewards = {
-            "round_win": 0.5,        # 本轮胜者（由打牌直接获胜时）
-            "step_penalty": -0.01,   # 每步小惩罚，鼓励尽快结束
+            "round_win": 0.5,          # 打牌直接赢下本轮
+            "eliminate_opponent": 0.3, # 消灭一个对手（卫兵猜中/男爵/王子弃公主）
+            "step_penalty": -0.01,     # 每步小惩罚，鼓励尽快结束
         }
         if reward_config:
             self._rewards.update(reward_config)
@@ -89,25 +90,26 @@ class LoveLetterGame(GameInterface):
     def _build_action_slots(num_players: int) -> list[tuple[int, int, int]]:
         """构建固定动作槽位，返回 [(card, target, guess), ...]。
 
-        布局：
+        布局（target 为「相对玩家编号」：0=自己，r=顺时针第 r 个玩家）：
             - 无目标牌（侍女/女伯爵/公主）：各 1 个槽位
-            - 神父/男爵/国王：1 个「空打」槽位 + n 个目标槽位
-            - 王子：n 个目标槽位（含自己，永不空打）
-            - 卫兵：1 个「空打」槽位 + n×7 目标×猜测槽位
+            - 神父/男爵/国王：1 个「空打」槽位 + (n-1) 个相对目标槽位
+            - 王子：n 个相对目标槽位（0=自己，永不空打）
+            - 卫兵：1 个「空打」槽位 + (n-1)×7 相对目标×猜测槽位
+        总计 = 11n - 3。
         """
         slots: list[tuple[int, int, int]] = []
         for c in (HANDMAID, COUNTESS, PRINCESS):
             slots.append((c, -1, -1))
         for c in _TARGET_OTHER_CARDS:
             slots.append((c, -1, -1))  # 空打（无有效目标时）
-            for t in range(num_players):
-                slots.append((c, t, -1))
-        for t in range(num_players):
-            slots.append((PRINCE, t, -1))
+            for r in range(1, num_players):  # 相对对手
+                slots.append((c, r, -1))
+        for r in range(num_players):  # 王子：0=自己
+            slots.append((PRINCE, r, -1))
         slots.append((GUARD, -1, -1))  # 空打
-        for t in range(num_players):
+        for r in range(1, num_players):
             for g in range(2, 9):
-                slots.append((GUARD, t, g))
+                slots.append((GUARD, r, g))
         return slots
 
     @property
@@ -176,7 +178,16 @@ class LoveLetterGame(GameInterface):
         }
 
         # 1. 打牌并执行效果
+        before_elim = list(state.eliminated)
         self._play_card(state, p, action)
+
+        # 消灭对手奖励（卫兵猜中 / 男爵 / 王子弃公主）
+        eliminated_opponents = [
+            i for i in range(n)
+            if i != p and not before_elim[i] and state.eliminated[i]
+        ]
+        if eliminated_opponents:
+            dense_reward += self._rewards.get("eliminate_opponent", 0.0) * len(eliminated_opponents)
 
         # 2. 判定本轮结果
         alive = state.alive_players()
@@ -223,20 +234,24 @@ class LoveLetterGame(GameInterface):
         hand.remove(c)
         state.discards[p].append(c)
 
+        # 相对目标 → 绝对玩家；target < 0 表示「空打」，无效果
+        n = state.num_players
+        t = (p + action.target) % n if action.target >= 0 else -1
+
         if c == HANDMAID:
             state.protected[p] = True
         elif c == PRIEST:
             pass  # 看对手手牌：在完美信息建模下无状态变化
         elif c == BARON:
-            t = action.target
-            my_val = state.hands[p][0] if state.hands[p] else 0
-            their_val = state.hands[t][0] if state.hands[t] else 0
-            if my_val < their_val:
-                self._eliminate(state, p)
-            elif their_val < my_val:
-                self._eliminate(state, t)
+            if t >= 0:
+                my_val = state.hands[p][0] if state.hands[p] else 0
+                their_val = state.hands[t][0] if state.hands[t] else 0
+                if my_val < their_val:
+                    self._eliminate(state, p)
+                elif their_val < my_val:
+                    self._eliminate(state, t)
         elif c == PRINCE:
-            t = action.target
+            # 王子必有有效目标（t >= 0）
             hand_t = state.hands[t]
             while hand_t:
                 card = hand_t.pop()
@@ -247,10 +262,9 @@ class LoveLetterGame(GameInterface):
             if not state.eliminated[t] and state.deck:
                 hand_t.append(state.deck.pop())
         elif c == KING:
-            t = action.target
-            state.hands[p], state.hands[t] = state.hands[t], state.hands[p]
+            if t >= 0:
+                state.hands[p], state.hands[t] = state.hands[t], state.hands[p]
         elif c == GUARD:
-            t = action.target
             g = action.guess
             if t >= 0 and state.hands[t] and state.hands[t][0] == g:
                 self._eliminate(state, t)
@@ -355,36 +369,38 @@ class LoveLetterGame(GameInterface):
         return actions
 
     def _card_actions(self, state: LoveLetterState, p: int, c: int) -> list[PlayCardAction]:
-        """为当前玩家的一张手牌 c 生成所有合法动作。"""
+        """为当前玩家的一张手牌 c 生成所有合法动作（target 为相对编号）。"""
         n = state.num_players
         if c in (HANDMAID, COUNTESS, PRINCESS):
             return [PlayCardAction(c)]
 
         if c in _TARGET_OTHER_CARDS:
+            # 相对目标：1..n-1（绝对 = (p+r)%n），须存活且未被保护
             targets = [
-                t for t in range(n)
-                if t != p and not state.eliminated[t] and not state.protected[t]
+                r for r in range(1, n)
+                if not state.eliminated[(p + r) % n] and not state.protected[(p + r) % n]
             ]
             if not targets:
                 return [PlayCardAction(c)]  # 空打：无有效目标
-            return [PlayCardAction(c, t) for t in targets]
+            return [PlayCardAction(c, r) for r in targets]
 
         if c == PRINCE:
-            # 目标可以是自己；自己被保护不影响自己的牌
+            # 相对目标：0=自己，1..n-1=对手；自己被保护不影响自己的牌
             targets = [
-                t for t in range(n)
-                if not state.eliminated[t] and (t == p or not state.protected[t])
+                r for r in range(n)
+                if not state.eliminated[(p + r) % n]
+                and (r == 0 or not state.protected[(p + r) % n])
             ]
-            return [PlayCardAction(c, t) for t in targets]
+            return [PlayCardAction(c, r) for r in targets]
 
         if c == GUARD:
             targets = [
-                t for t in range(n)
-                if t != p and not state.eliminated[t] and not state.protected[t]
+                r for r in range(1, n)
+                if not state.eliminated[(p + r) % n] and not state.protected[(p + r) % n]
             ]
             if not targets:
                 return [PlayCardAction(c)]  # 空打
-            return [PlayCardAction(c, t, g) for t in targets for g in range(2, 9)]
+            return [PlayCardAction(c, r, g) for r in targets for g in range(2, 9)]
 
         return []
 
