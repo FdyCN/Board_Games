@@ -41,6 +41,8 @@ def load_model_agent(
     game,
     agent_name: str,
     device: str = "cpu",
+    encoder_type: str = "mlp",
+    model_config: str = "medium",
 ) -> NeuralAgent:
     """
     从检查点加载模型 Agent
@@ -50,25 +52,27 @@ def load_model_agent(
         game: 游戏实例
         agent_name: Agent 名称
         device: 设备
+        encoder_type: 编码器类型（必须与训练时一致）
+        model_config: 模型配置（small/medium/large）
 
     Returns:
         NeuralAgent 实例
     """
     print(f"加载模型: {checkpoint_path}")
 
-    # 创建模型
+    # 创建模型（架构必须与训练时一致）
     model = create_model(
         obs_dim=game.observation_shape[0],
         action_size=game.action_space_size,
-        encoder_type="attention",  # 默认使用 attention
-        config="medium",
+        encoder_type=encoder_type,
+        config=model_config,
     )
 
     # 创建 Agent
     agent = NeuralAgent(
         model=model,
-        player_id=0,  # 临时 ID，稍后会被 Arena 覆盖
         device=device,
+        name=agent_name,
     )
 
     # 加载检查点
@@ -87,6 +91,8 @@ def evaluate_vs_random(
     num_games: int = 100,
     device: str = "cpu",
     verbose: bool = True,
+    encoder_type: str = "mlp",
+    model_config: str = "medium",
 ) -> Dict:
     """
     评估模型 vs 随机 Agent
@@ -98,6 +104,8 @@ def evaluate_vs_random(
         num_games: 游戏局数
         device: 设备
         verbose: 是否显示详细信息
+        encoder_type: 编码器类型
+        model_config: 模型配置
 
     Returns:
         评估结果字典
@@ -114,7 +122,8 @@ def evaluate_vs_random(
     agent_names = []
 
     # 加载训练好的模型
-    model_agent = load_model_agent(model_path, game, "Trained Model", device)
+    model_agent = load_model_agent(model_path, game, "Trained Model", device,
+                                   encoder_type=encoder_type, model_config=model_config)
     agents.append(model_agent)
     agent_names.append("Trained Model")
 
@@ -152,6 +161,8 @@ def evaluate_tournament(
     num_games: int = 200,
     device: str = "cpu",
     verbose: bool = True,
+    encoder_type: str = "mlp",
+    model_config: str = "medium",
 ) -> Dict:
     """
     评估多个模型的锦标赛
@@ -183,7 +194,8 @@ def evaluate_tournament(
 
     for i, model_path in enumerate(model_paths):
         agent_name = f"Model {i+1}"
-        agent = load_model_agent(model_path, game, agent_name, device)
+        agent = load_model_agent(model_path, game, agent_name, device,
+                                 encoder_type=encoder_type, model_config=model_config)
         agents.append(agent)
         agent_names.append(agent_name)
 
@@ -212,6 +224,8 @@ def evaluate_evolution(
     num_games: int = 50,
     device: str = "cpu",
     verbose: bool = True,
+    encoder_type: str = "mlp",
+    model_config: str = "medium",
 ) -> Dict:
     """
     评估模型进化曲线
@@ -256,7 +270,8 @@ def evaluate_evolution(
         agent_names = []
 
         # 加载检查点模型
-        model_agent = load_model_agent(str(checkpoint), game, checkpoint.name, device)
+        model_agent = load_model_agent(str(checkpoint), game, checkpoint.name, device,
+                                       encoder_type=encoder_type, model_config=model_config)
         agents.append(model_agent)
         agent_names.append(checkpoint.name)
 
@@ -392,6 +407,22 @@ def main():
     )
 
     parser.add_argument(
+        "--encoder",
+        type=str,
+        default="mlp",
+        choices=["mlp", "attention"],
+        help="编码器类型，须与训练时一致（默认: mlp）",
+    )
+
+    parser.add_argument(
+        "--model-config",
+        type=str,
+        default="medium",
+        choices=["small", "medium", "large"],
+        help="模型配置，须与训练时一致（默认: medium）",
+    )
+
+    parser.add_argument(
         "--output",
         type=str,
         help="输出结果的 JSON 文件路径",
@@ -418,6 +449,8 @@ def main():
                 num_games=args.games,
                 device=args.device,
                 verbose=args.verbose,
+                encoder_type=args.encoder,
+                model_config=args.model_config,
             )
 
         elif args.mode == "tournament":
@@ -431,6 +464,8 @@ def main():
                 num_games=args.games,
                 device=args.device,
                 verbose=args.verbose,
+                encoder_type=args.encoder,
+                model_config=args.model_config,
             )
 
         elif args.mode == "evolution":
@@ -444,6 +479,8 @@ def main():
                 num_games=args.games,
                 device=args.device,
                 verbose=args.verbose,
+                encoder_type=args.encoder,
+                model_config=args.model_config,
             )
 
         # 保存结果

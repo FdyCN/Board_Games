@@ -172,7 +172,10 @@ class Arena:
 
         # 游戏结束
         duration = time.time() - start_time
-        scores = [state.players[i].get_score() for i in range(len(state.players))]
+        # 游戏无关：用 get_final_rewards 作为分数（胜者 1.0，其余 0.0），
+        # 胜者 = 分数最高者。之前硬编码 Splendor 的 state.players[i].get_score()，
+        # 会导致非 Splendor 游戏直接崩。
+        scores = self.game.get_final_rewards(state)
         winner_idx = scores.index(max(scores))
 
         if verbose:

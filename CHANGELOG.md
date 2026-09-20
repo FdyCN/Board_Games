@@ -18,7 +18,7 @@
 
 - 最佳可用模型：**PPO（结构化模型，mlp medium，3 人）**
   - 检查点：`data/splendor/checkpoints/mlp_medium_3p_v1/latest.pth`
-- **情书（Love Letter）**：引擎已实现（隐藏信息 + 回合制 + 淘汰制），3 人 PPO 训练就绪（`games/love_letter/` + `configs/love_letter/`）。
+- **情书（Love Letter）**：引擎已实现（隐藏信息 + 回合制 + 淘汰制）。3 人 PPO 训练 300 迭代后，vs 2 随机对手胜率 **77%**（200 局，平均 69 回合）。
 - AlphaZero 训练循环已搭好（价值函数可学），但策略网络在有限算力下尚未反超 PPO（见下）。
 - 目录结构已完成「游戏无关化 + 按游戏分组产物」重构，可直接接入新桌游。
 
@@ -104,6 +104,7 @@
 - **游戏无关重构**（本版）：训练脚本读 `game.name`，`dense_rewards` 改为自由字典，`data/` 按游戏分组，`scripts/new_game.py` 脚手架
 - **情书（Love Letter）引擎**：第二个完整游戏，固定动作空间（7+11n 槽位）、按玩家视角观察编码（只暴露自己手牌）、侍女保护/女伯爵强制/王子重抽等规则全覆盖
 - **模型逐卡编码解耦**：`ActorCritic` 的 Splendor 逐卡评估器改为仅在 `action_size==46` 时启用，其他游戏走 flat 策略头
+- **评估脚本游戏无关化**：`evaluate.py` 增加 `--encoder/--model-config`（此前硬编码 attention + `NeuralAgent(player_id=...)` 已失效）；`Arena` 改用它 `get_final_rewards` 判定胜负（此前硬编码 Splendor 的 `state.players[i].get_score()`）
 
 ---
 
