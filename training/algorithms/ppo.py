@@ -51,6 +51,7 @@ class PPO:
         use_value_clip: bool = True,
         value_clip_epsilon: float = 0.4,
         outcome_coef: float = 1.0,
+        aux_coef: float = 0.1,
     ):
         """
         初始化 PPO 训练器
@@ -78,6 +79,7 @@ class PPO:
         self.max_grad_norm = max_grad_norm
         self.use_value_clip = use_value_clip
         self.outcome_coef = outcome_coef
+        self.aux_coef = aux_coef
 
         # 优化器
         self.optimizer = optim.Adam(model.parameters(), lr=learning_rate)
@@ -112,6 +114,7 @@ class PPO:
         total_policy_loss = 0.0
         total_value_loss = 0.0
         total_outcome_loss = 0.0
+        total_aux_loss = 0.0
         total_entropy = 0.0
         total_kl_div = 0.0
         total_clip_fraction = 0.0
@@ -134,6 +137,7 @@ class PPO:
                 total_policy_loss += metrics["policy_loss"]
                 total_value_loss += metrics["value_loss"]
                 total_outcome_loss += metrics["outcome_loss"]
+                total_aux_loss += metrics.get("aux_loss", 0.0)
                 total_entropy += metrics["entropy"]
                 total_kl_div += metrics["kl_div"]
                 total_clip_fraction += metrics["clip_fraction"]
@@ -144,6 +148,7 @@ class PPO:
             "policy_loss": total_policy_loss / num_updates,
             "value_loss": total_value_loss / num_updates,
             "outcome_loss": total_outcome_loss / num_updates,
+            "aux_loss": total_aux_loss / num_updates,
             "entropy": total_entropy / num_updates,
             "kl_div": total_kl_div / num_updates,
             "clip_fraction": total_clip_fraction / num_updates,
@@ -229,12 +234,27 @@ class PPO:
         else:
             outcome_loss = torch.tensor(0.0, device=self.device)
 
+        # === 5. 上帝视角辅助损失 ===
+        # 预测对手隐藏信息（如手牌），逼共享编码器学到信念状态。
+        if batch.aux_targets is not None and self.model.aux_head is not None:
+            aux_logits = self.model.get_aux_logits(observations)  # (B, aux_dim)
+            num_heads = batch.aux_targets.shape[-1]
+            num_classes = aux_logits.shape[-1] // num_heads
+            aux_loss = nn.functional.cross_entropy(
+                aux_logits.reshape(-1, num_classes),
+                batch.aux_targets.reshape(-1).long(),
+                ignore_index=-1,
+            )
+        else:
+            aux_loss = torch.tensor(0.0, device=self.device)
+
         # === 总损失 ===
         total_loss = (
             policy_loss
             + self.value_coef * value_loss
             + self.entropy_coef * entropy_loss
             + self.outcome_coef * outcome_loss
+            + self.aux_coef * aux_loss
         )
 
         # 反向传播和优化
@@ -258,6 +278,7 @@ class PPO:
             "policy_loss": policy_loss.item(),
             "value_loss": value_loss.item(),
             "outcome_loss": outcome_loss.item(),
+            "aux_loss": aux_loss.item(),
             "entropy": entropy.mean().item(),
             "kl_div": kl_div.item(),
             "clip_fraction": clip_fraction.item(),
@@ -284,6 +305,7 @@ class PPO:
                 "max_grad_norm": self.max_grad_norm,
                 "use_value_clip": self.use_value_clip,
                 "outcome_coef": self.outcome_coef,
+                "aux_coef": self.aux_coef,
             },
         }
 
@@ -317,6 +339,7 @@ class PPO:
         self.max_grad_norm = hyperparams.get("max_grad_norm", self.max_grad_norm)
         self.use_value_clip = hyperparams.get("use_value_clip", self.use_value_clip)
         self.outcome_coef = hyperparams.get("outcome_coef", self.outcome_coef)
+        self.aux_coef = hyperparams.get("aux_coef", self.aux_coef)
 
         return checkpoint.get("metadata", {})
 

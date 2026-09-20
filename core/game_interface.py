@@ -411,6 +411,46 @@ class GameInterface(ABC):
         """
         return [(state, policy)]
 
+    @property
+    def auxiliary_shape(self) -> tuple[int, ...] | None:
+        """
+        辅助监督标签的观察侧形状（可选）。
+
+        用于「上帝视角」辅助任务：例如预测对手隐藏手牌。返回 None 表示
+        该游戏没有辅助监督任务。子类可覆盖。
+
+        Returns:
+            辅助标签形状，例如 ((num_players-1)*8,)；None 表示无辅助任务。
+
+        Examples:
+            >>> if game.auxiliary_shape is not None:
+            ...     labels = game.get_auxiliary_labels(state, player_id)
+            ...     # labels.shape == game.auxiliary_shape
+        """
+        return None
+
+    def get_auxiliary_labels(self, state: StateType, player_id: PlayerID) -> np.ndarray | None:
+        """
+        返回该玩家视角的辅助监督标签（可选，用于「上帝视角」辅助任务）。
+
+        训练数据收集时，主进程能看到完整状态（包括其他玩家的隐藏信息），
+        因此可以生成「预测对手隐藏状态」等辅助标签，帮助模型学习从公开
+        信息推断隐藏信息（信念状态）。
+
+        Args:
+            state: 当前游戏状态（可能是完整状态）。
+            player_id: 观察者玩家 ID。
+
+        Returns:
+            辅助标签数组（形状见 auxiliary_shape），或 None 表示该状态无标签。
+
+        Examples:
+            >>> # 情书：预测每个相对对手的手牌值
+            >>> labels = game.get_auxiliary_labels(state, player_id)
+            >>> # labels 形状 ((num_players-1),)，值为 0..7 或 -1
+        """
+        return None
+
     def __str__(self) -> str:
         """返回游戏的字符串表示"""
         return f"{self.__class__.__name__}(num_players={self.num_players})"

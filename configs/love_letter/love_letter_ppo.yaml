@@ -36,7 +36,7 @@ training:
   device: "cpu"
   use_position_augmentation: false
   num_workers: 2
-  checkpoint_dir: "data/love_letter/checkpoints/love_letter_3p_v2"
+  checkpoint_dir: "data/love_letter/checkpoints/love_letter_3p_pool_v1"
   checkpoint_interval: 50
   log_interval: 1
   verbose: true
@@ -47,6 +47,6 @@ evaluation:
   deterministic: true
 
 experiment:
-  name: "love_letter_ppo_3p_v2"
-  tags: ["love_letter", "ppo", "3p", "relative-obs"]
-  notes: "情书 3 人对局，PPO v2（相对玩家视角 + 消灭对手奖励）"
+  name: "love_letter_ppo_3p_pool_v1"
+  tags: ["love_letter", "ppo", "3p", "opponent-pool", "belief", "god-view"]
+  notes: "情书 3 人：对手池自对弈 + 信念状态（未露面卡）+ 上帝视角辅助头"

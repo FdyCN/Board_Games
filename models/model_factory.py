@@ -44,6 +44,7 @@ def create_model(
     action_size: int,
     encoder_type: Literal["mlp", "attention"] = "mlp",
     config: Literal["small", "medium", "large"] | dict | None = None,
+    aux_dim: int | None = None,
 ) -> ActorCritic:
     """
     创建 Actor-Critic 模型
@@ -54,6 +55,7 @@ def create_model(
         encoder_type: 编码器类型 ("mlp" 或 "attention")
         config: 配置名称（"small"、"medium"、"large"）或自定义配置字典
                 如果为 None，使用 "medium" 配置
+        aux_dim: 上帝视角辅助头输出维度（可选，None 表示无辅助头）
 
     Returns:
         配置好的 ActorCritic 模型
@@ -62,15 +64,8 @@ def create_model(
         >>> # 使用预设配置
         >>> model = create_model(384, 50, encoder_type="mlp", config="medium")
 
-        >>> # 使用自定义配置
-        >>> custom_config = {
-        ...     "hidden_dim": 256,
-        ...     "encoder_intermediate_dim": 512,
-        ...     "head_intermediate_dim": 128,
-        ...     "num_attention_heads": 4,
-        ...     "dropout": 0.05,
-        ... }
-        >>> model = create_model(384, 50, encoder_type="attention", config=custom_config)
+        >>> # 带上帝视角辅助头
+        >>> model = create_model(59, 30, encoder_type="mlp", config="medium", aux_dim=16)
     """
     # 获取配置
     if config is None:
@@ -91,6 +86,7 @@ def create_model(
         obs_dim=obs_dim,
         action_size=action_size,
         encoder_type=encoder_type,
+        aux_dim=aux_dim,
         **model_config,
     )
 

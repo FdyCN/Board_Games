@@ -44,6 +44,7 @@ class ExperienceBatch:
         values: torch.Tensor,
         legal_actions_masks: torch.Tensor | None = None,
         outcomes: torch.Tensor | None = None,
+        aux_targets: torch.Tensor | None = None,
     ):
         self.observations = observations
         self.actions = actions
@@ -53,6 +54,7 @@ class ExperienceBatch:
         self.values = values
         self.legal_actions_masks = legal_actions_masks
         self.outcomes = outcomes
+        self.aux_targets = aux_targets
 
         # 验证形状一致性
         batch_size = len(observations)
@@ -65,6 +67,8 @@ class ExperienceBatch:
             assert len(legal_actions_masks) == batch_size
         if outcomes is not None:
             assert len(outcomes) == batch_size
+        if aux_targets is not None:
+            assert len(aux_targets) == batch_size
 
     @property
     def batch_size(self) -> int:
@@ -133,6 +137,11 @@ class ExperienceBatch:
         if all(exp.outcome is not None for exp in experiences):
             outcomes = np.array([exp.outcome for exp in experiences], dtype=np.float32)
 
+        # 提取上帝视角辅助标签（如对手隐藏手牌）
+        aux_targets = None
+        if all(exp.aux_targets is not None for exp in experiences):
+            aux_targets = np.stack([exp.aux_targets for exp in experiences])
+
         # 归一化优势函数
         if normalize_advantages and len(advantages) > 1:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
@@ -145,6 +154,9 @@ class ExperienceBatch:
         outcomes_tensor = None
         if outcomes is not None:
             outcomes_tensor = torch.from_numpy(outcomes).float().to(device_obj)
+        aux_targets_tensor = None
+        if aux_targets is not None:
+            aux_targets_tensor = torch.from_numpy(aux_targets).to(device_obj)
 
         return cls(
             observations=torch.from_numpy(observations).float().to(device_obj),
@@ -155,6 +167,7 @@ class ExperienceBatch:
             values=torch.from_numpy(values).float().to(device_obj),
             legal_actions_masks=legal_masks_tensor,
             outcomes=outcomes_tensor,
+            aux_targets=aux_targets_tensor,
         )
 
     def iterate_minibatches(
@@ -187,6 +200,7 @@ class ExperienceBatch:
                 values=self.values[batch_indices],
                 legal_actions_masks=self.legal_actions_masks[batch_indices] if self.legal_actions_masks is not None else None,
                 outcomes=self.outcomes[batch_indices] if self.outcomes is not None else None,
+                aux_targets=self.aux_targets[batch_indices] if self.aux_targets is not None else None,
             )
 
     def to(self, device: str) -> "ExperienceBatch":
@@ -209,6 +223,7 @@ class ExperienceBatch:
             values=self.values.to(device_obj),
             legal_actions_masks=self.legal_actions_masks.to(device_obj) if self.legal_actions_masks is not None else None,
             outcomes=self.outcomes.to(device_obj) if self.outcomes is not None else None,
+            aux_targets=self.aux_targets.to(device_obj) if self.aux_targets is not None else None,
         )
 
 

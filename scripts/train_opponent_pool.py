@@ -41,10 +41,11 @@ from training.experience import ExperienceBatch
 from training.self_play_worker import collect_episode
 
 
-def _make_model(obs_dim, action_size, encoder_type, model_config):
+def _make_model(game, encoder_type, model_config):
     return create_model(
-        obs_dim=obs_dim, action_size=action_size,
+        obs_dim=game.observation_shape[0], action_size=game.action_space_size,
         encoder_type=encoder_type, config=model_config,
+        aux_dim=game.auxiliary_shape[0] if game.auxiliary_shape else None,
     )
 
 
@@ -65,8 +66,7 @@ def main():
     reward_config = dict(c.algorithm.dense_rewards)
 
     game = create_game(c.game.name, **build_game_kwargs(c))
-    model = _make_model(game.observation_shape[0], game.action_space_size,
-                        c.model.encoder_type, c.model.config)
+    model = _make_model(game, c.model.encoder_type, c.model.config)
 
     trainer = Trainer(
         game=game, model=model,
@@ -161,6 +161,7 @@ def main():
             "policy_loss": round(ppo_metrics["policy_loss"], 6),
             "value_loss": round(ppo_metrics["value_loss"], 6),
             "outcome_loss": round(ppo_metrics.get("outcome_loss", 0.0), 6),
+            "aux_loss": round(ppo_metrics.get("aux_loss", 0.0), 6),
             "explained_variance": round(ppo_metrics.get("explained_variance", 0.0), 6),
             "entropy": round(ppo_metrics["entropy"], 6),
             "kl_div": round(ppo_metrics["kl_div"], 6),
@@ -174,8 +175,7 @@ def main():
 
         # 4. 定期把当前模型快照加入对手池
         if it % args.snapshot_interval == 0:
-            snap_model = _make_model(game.observation_shape[0], game.action_space_size,
-                                     c.model.encoder_type, c.model.config)
+            snap_model = _make_model(game, c.model.encoder_type, c.model.config)
             snap_model.load_state_dict(copy.deepcopy(model.state_dict()))
             snap_model.eval()
             pool_agents.append(NeuralAgent(snap_model, device=c.training.device, name=f"pool_{it}"))

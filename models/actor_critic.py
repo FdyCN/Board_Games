@@ -53,6 +53,7 @@ class ActorCritic(nn.Module):
         head_intermediate_dim: int = 128,
         num_attention_heads: int = 4,
         dropout: float = 0.0,
+        aux_dim: int | None = None,
     ):
         super().__init__()
 
@@ -60,6 +61,7 @@ class ActorCritic(nn.Module):
         self.action_size = action_size
         self.encoder_type = encoder_type
         self.hidden_dim = hidden_dim
+        self.aux_dim = aux_dim
 
         # 创建编码器
         if encoder_type == "mlp":
@@ -112,6 +114,17 @@ class ActorCritic(nn.Module):
             intermediate_dim=head_intermediate_dim,
             dropout=dropout,
         )
+
+        # 上帝视角辅助头（可选）：预测隐藏信息（如对手手牌），
+        # 用于让编码器学到"从公开信息推断隐藏状态"的信念表征。
+        if aux_dim is not None and aux_dim > 0:
+            self.aux_head = nn.Sequential(
+                nn.Linear(hidden_dim, head_intermediate_dim),
+                nn.ReLU(),
+                nn.Linear(head_intermediate_dim, aux_dim),
+            )
+        else:
+            self.aux_head = None
 
     def _encode_cards(self, obs: torch.Tensor) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """
@@ -245,6 +258,21 @@ class ActorCritic(nn.Module):
         )
         return probs
 
+    def get_aux_logits(self, obs: torch.Tensor) -> torch.Tensor | None:
+        """
+        获取上帝视角辅助头的 logits（用于预测隐藏信息）。
+
+        Args:
+            obs: 观察向量 (batch_size, obs_dim)
+
+        Returns:
+            aux_logits: (batch_size, aux_dim)，或 None（无辅助头）
+        """
+        if self.aux_head is None:
+            return None
+        features = self.encoder(obs)
+        return self.aux_head(features)
+
     def evaluate_actions(
         self,
         obs: torch.Tensor,
@@ -296,13 +324,15 @@ class ActorCritic(nn.Module):
         policy_params = sum(p.numel() for p in self.policy_head.parameters())
         value_params = sum(p.numel() for p in self.value_head.parameters())
         outcome_params = sum(p.numel() for p in self.outcome_head.parameters())
-        total_params = encoder_params + policy_params + value_params + outcome_params
+        aux_params = sum(p.numel() for p in self.aux_head.parameters()) if self.aux_head is not None else 0
+        total_params = encoder_params + policy_params + value_params + outcome_params + aux_params
 
         return {
             "encoder": encoder_params,
             "policy_head": policy_params,
             "value_head": value_params,
             "outcome_head": outcome_params,
+            "aux_head": aux_params,
             "total": total_params,
         }
 

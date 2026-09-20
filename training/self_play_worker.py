@@ -69,6 +69,9 @@ def collect_episode(
         observation = game.state_to_observation(state, current_player)
         legal_actions = game.get_legal_actions(state)
 
+        # 上帝视角辅助标签（如对手隐藏手牌），可选
+        aux_targets = game.get_auxiliary_labels(state, current_player)
+
         if not legal_actions:
             if verbose:
                 print(f"步数 {step_count}: 玩家 {current_player} 没有合法动作，游戏结束")
@@ -111,6 +114,7 @@ def collect_episode(
             log_prob=info["log_prob"],
             value=info["value"],
             legal_actions_mask=legal_actions_mask,  # 保存合法动作掩码
+            aux_targets=aux_targets,  # 上帝视角辅助标签
         )
 
         experiences.append(experience)

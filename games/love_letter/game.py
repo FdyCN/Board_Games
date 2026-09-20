@@ -460,6 +460,22 @@ class LoveLetterGame(GameInterface):
     def observation_shape(self) -> tuple[int, ...]:
         return (self._encoder.observation_dim,)
 
+    @property
+    def auxiliary_shape(self) -> tuple[int, ...]:
+        """辅助任务输出维度：预测 (n-1) 个相对对手的手牌值（8 类）。"""
+        return ((self._num_players - 1) * 8,)
+
+    def get_auxiliary_labels(self, state: LoveLetterState, player_id: int):
+        """上帝视角辅助标签：每个相对对手的手牌值（0..7）或 -1（出局/无牌）。"""
+        import numpy as np
+        n = state.num_players
+        labels = np.full(n - 1, -1, dtype=np.int64)
+        for r in range(1, n):
+            other = (player_id + r) % n
+            if not state.eliminated[other] and state.hands[other]:
+                labels[r - 1] = state.hands[other][0] - 1  # 牌值 1-8 → 类 0-7
+        return labels
+
     def game_kwargs(self) -> dict:
         kwargs = super().game_kwargs()
         if self._seed is not None:

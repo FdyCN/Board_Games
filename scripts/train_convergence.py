@@ -49,6 +49,7 @@ def main():
         action_size=game.action_space_size,
         encoder_type=c.model.encoder_type,
         config=c.model.config,
+        aux_dim=game.auxiliary_shape[0] if game.auxiliary_shape else None,
     )
     trainer = Trainer(
         game=game,
@@ -135,6 +136,7 @@ def main():
             "policy_loss": round(ppo_metrics["policy_loss"], 6),
             "value_loss": round(ppo_metrics["value_loss"], 6),
             "outcome_loss": round(ppo_metrics.get("outcome_loss", 0.0), 6),
+            "aux_loss": round(ppo_metrics.get("aux_loss", 0.0), 6),
             "explained_variance": round(ppo_metrics.get("explained_variance", 0.0), 6),
             "entropy": round(ppo_metrics["entropy"], 6),
             "kl_div": round(ppo_metrics["kl_div"], 6),

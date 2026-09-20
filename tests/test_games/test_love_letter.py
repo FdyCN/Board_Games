@@ -58,7 +58,24 @@ def test_action_space_size():
 
 def test_observation_shape():
     game = LoveLetterGame(num_players=3)
-    assert game.observation_shape == (18 + 11 * 3,)  # 51
+    assert game.observation_shape == (26 + 11 * 3,)  # 59
+
+
+def test_auxiliary_labels():
+    """上帝视角辅助标签：预测每个相对对手的手牌值（0..7），出局为 -1。"""
+    game = LoveLetterGame(num_players=3)
+    assert game.auxiliary_shape == ((3 - 1) * 8,)
+    state = _make_state()
+    state.hands[0] = [GUARD, HANDMAID]  # 观察者 = 玩家0
+    state.hands[1] = [PRIEST]           # 相对对手 1 → 绝对 1，神父=2 → 类 1
+    state.hands[2] = [PRINCESS]         # 相对对手 2 → 绝对 2，公主=8 → 类 7
+    labels = game.get_auxiliary_labels(state, player_id=0)
+    assert labels.tolist() == [1, 7]
+
+    # 出局对手 → -1
+    state.eliminated[1] = True
+    labels = game.get_auxiliary_labels(state, player_id=0)
+    assert labels.tolist() == [-1, 7]
 
 
 def test_initial_state():
