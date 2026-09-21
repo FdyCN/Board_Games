@@ -75,12 +75,19 @@ class LoveLetterEncoder:
     def _encode_player_public(
         self, obs: np.ndarray, idx: int, state: LoveLetterState, p: int
     ) -> int:
-        """编码单个玩家的公开信息（10 维）：弃牌堆各值数量 + 出局 + 受保护。"""
-        counts = [0] * 8
-        for v in state.discards[p]:
-            counts[v - 1] += 1
-        for j in range(8):
-            obs[idx + j] = min(counts[j], 3) / 3.0
+        """编码单个玩家的公开信息（10 维）。
+
+        弃牌堆按「出牌顺序」编码（信息状态 / 完美回忆，参考 OpenSpiel）：
+        8 个槽位，每个槽位 = 该位置弃掉的牌值 / 8（0=空）。保留时序信息，
+        因为「第 3 回合弃卫兵」和「第 12 回合弃卫兵」的推断含义不同。
+        最后 2 维：是否出局、是否受侍女保护。
+        """
+        discards = state.discards[p]
+        for j in range(8):  # 最多 8 个槽位（按出牌顺序，超出截断）
+            if j < len(discards):
+                obs[idx + j] = discards[j] / 8.0  # 牌值 1-8 → 0.125..1.0
+            else:
+                obs[idx + j] = 0.0  # 空槽位
         idx += 8
         obs[idx] = 1.0 if state.eliminated[p] else 0.0
         idx += 1
