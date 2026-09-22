@@ -67,6 +67,7 @@ def load_model_agent(
         encoder_type=encoder_type,
         config=model_config,
         aux_dim=game.auxiliary_shape[0] if game.auxiliary_shape else None,
+        encoder_params=game.encoder_params,
     )
 
     # 创建 Agent

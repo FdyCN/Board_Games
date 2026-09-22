@@ -250,6 +250,7 @@ def main():
             encoder_type=c.model.encoder_type,
             config=c.model.config,
             aux_dim=aux_dim,  # 保持与 evaluate.py 的模型结构一致
+            encoder_params=game.encoder_params,
         )
 
     q_net = make_model()

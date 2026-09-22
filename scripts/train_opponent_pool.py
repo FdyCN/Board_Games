@@ -46,6 +46,7 @@ def _make_model(game, encoder_type, model_config):
         obs_dim=game.observation_shape[0], action_size=game.action_space_size,
         encoder_type=encoder_type, config=model_config,
         aux_dim=game.auxiliary_shape[0] if game.auxiliary_shape else None,
+        encoder_params=game.encoder_params,
     )
 
 

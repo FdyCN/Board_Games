@@ -6,7 +6,7 @@ game:
   seed: null
 
 model:
-  encoder_type: "mlp"     # 选项: "mlp", "attention"
+  encoder_type: "gru"     # 选项: "mlp", "attention", "gru"
   config: "medium"        # 选项: "small", "medium", "large"
 
 algorithm:
@@ -36,7 +36,7 @@ training:
   device: "cpu"
   use_position_augmentation: false
   num_workers: 2
-  checkpoint_dir: "data/love_letter/checkpoints/love_letter_3p_nfsp_v1"
+  checkpoint_dir: "data/love_letter/checkpoints/love_letter_3p_gru_v1"
   checkpoint_interval: 50
   log_interval: 1
   verbose: true
@@ -47,6 +47,6 @@ evaluation:
   deterministic: true
 
 experiment:
-  name: "love_letter_nfsp_3p_v1"
-  tags: ["love_letter", "nfsp", "3p", "imperfect-info"]
-  notes: "情书 3 人：NFSP（神经虚拟自对弈）+ 有序信息状态"
+  name: "love_letter_ppo_gru_3p_v1"
+  tags: ["love_letter", "ppo", "3p", "gru", "known", "sequence"]
+  notes: "情书 3 人：GRU 序列编码 + 私密知识追踪 + 有序事件时间线"

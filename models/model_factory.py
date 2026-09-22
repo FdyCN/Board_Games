@@ -42,9 +42,10 @@ MODEL_CONFIGS = {
 def create_model(
     obs_dim: int,
     action_size: int,
-    encoder_type: Literal["mlp", "attention"] = "mlp",
+    encoder_type: Literal["mlp", "attention", "gru"] = "mlp",
     config: Literal["small", "medium", "large"] | dict | None = None,
     aux_dim: int | None = None,
+    encoder_params: dict | None = None,
 ) -> ActorCritic:
     """
     创建 Actor-Critic 模型
@@ -87,6 +88,7 @@ def create_model(
         action_size=action_size,
         encoder_type=encoder_type,
         aux_dim=aux_dim,
+        encoder_params=encoder_params,
         **model_config,
     )
 

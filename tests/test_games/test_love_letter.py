@@ -59,7 +59,9 @@ def test_action_space_size():
 
 def test_observation_shape():
     game = LoveLetterGame(num_players=3)
-    assert game.observation_shape == (25 + 12 * 3,)  # 61
+    # 静态段 (25+5n) + 序列段 seq_len*(n+8)
+    expected = (25 + 5 * 3) + 24 * (3 + 8)
+    assert game.observation_shape == (expected,)  # 304
 
 
 def test_auxiliary_labels():

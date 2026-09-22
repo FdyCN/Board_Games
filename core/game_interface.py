@@ -415,17 +415,17 @@ class GameInterface(ABC):
     def auxiliary_shape(self) -> tuple[int, ...] | None:
         """
         辅助监督标签的观察侧形状（可选）。
+        """
+        return None
 
-        用于「上帝视角」辅助任务：例如预测对手隐藏手牌。返回 None 表示
-        该游戏没有辅助监督任务。子类可覆盖。
+    @property
+    def encoder_params(self) -> dict | None:
+        """
+        模型编码器所需的游戏特定参数（可选）。
 
-        Returns:
-            辅助标签形状，例如 ((num_players-1)*8,)；None 表示无辅助任务。
-
-        Examples:
-            >>> if game.auxiliary_shape is not None:
-            ...     labels = game.get_auxiliary_labels(state, player_id)
-            ...     # labels.shape == game.auxiliary_shape
+        例如序列编码器需要知道「静态段维度 / 序列长度 / 事件维度」才能把
+        观察向量拆分成（静态特征 + 有序事件时间线）。默认 None 表示无需
+        额外参数（普通 MLP/Attention 编码器）。
         """
         return None
 

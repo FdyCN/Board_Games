@@ -11,6 +11,7 @@ from typing import Literal
 
 from models.encoders.mlp_encoder import MLPEncoder
 from models.encoders.attention_encoder import AttentionEncoder
+from models.encoders.gru_encoder import GRUEncoder
 from models.heads.policy_head import PolicyHead
 from models.heads.value_head import ValueHead
 from models.heads.outcome_head import OutcomeHead
@@ -47,13 +48,14 @@ class ActorCritic(nn.Module):
         self,
         obs_dim: int,
         action_size: int,
-        encoder_type: Literal["mlp", "attention"] = "mlp",
+        encoder_type: Literal["mlp", "attention", "gru"] = "mlp",
         hidden_dim: int = 256,
         encoder_intermediate_dim: int = 320,
         head_intermediate_dim: int = 128,
         num_attention_heads: int = 4,
         dropout: float = 0.0,
         aux_dim: int | None = None,
+        encoder_params: dict | None = None,
     ):
         super().__init__()
 
@@ -62,6 +64,7 @@ class ActorCritic(nn.Module):
         self.encoder_type = encoder_type
         self.hidden_dim = hidden_dim
         self.aux_dim = aux_dim
+        encoder_params = encoder_params or {}
 
         # 创建编码器
         if encoder_type == "mlp":
@@ -77,6 +80,14 @@ class ActorCritic(nn.Module):
                 hidden_dim=hidden_dim,
                 intermediate_dim=encoder_intermediate_dim,
                 num_heads=num_attention_heads,
+                dropout=dropout,
+            )
+        elif encoder_type == "gru":
+            self.encoder = GRUEncoder(
+                static_dim=encoder_params["static_dim"],
+                seq_len=encoder_params["seq_len"],
+                evt_dim=encoder_params["evt_dim"],
+                hidden_dim=hidden_dim,
                 dropout=dropout,
             )
         else:

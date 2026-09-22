@@ -50,6 +50,7 @@ def main():
         encoder_type=c.model.encoder_type,
         config=c.model.config,
         aux_dim=game.auxiliary_shape[0] if game.auxiliary_shape else None,
+        encoder_params=game.encoder_params,
     )
     trainer = Trainer(
         game=game,

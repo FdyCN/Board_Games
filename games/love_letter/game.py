@@ -151,6 +151,7 @@ class LoveLetterGame(GameInterface):
         state.eliminated = [False] * state.num_players
         state.protected = [False] * state.num_players
         state.known = [[None] * state.num_players for _ in range(state.num_players)]
+        state.events = []
         state.current_player = start_player
         state.round_over = False
         # 起始玩家抽第二张牌（手牌 2 张）
@@ -226,6 +227,11 @@ class LoveLetterGame(GameInterface):
         self._state = state
         return state, rewards, done, info
 
+    def _discard(self, state: LoveLetterState, p: int, card: int) -> None:
+        """把一张牌放入玩家 p 的弃牌堆，并记录进全局事件时间线。"""
+        state.discards[p].append(card)
+        state.events.append((p, card))
+
     def _play_card(self, state: LoveLetterState, p: int, action: PlayCardAction) -> None:
         """执行打牌效果（action 已通过合法性校验）。"""
         c = action.card
@@ -233,7 +239,7 @@ class LoveLetterGame(GameInterface):
         if c not in hand:
             raise IllegalActionError(action, f"手牌中没有 {c}")
         hand.remove(c)
-        state.discards[p].append(c)
+        self._discard(state, p, c)
 
         # 相对目标 → 绝对玩家；target < 0 表示「空打」，无效果
         n = state.num_players
@@ -268,7 +274,7 @@ class LoveLetterGame(GameInterface):
             hand_t = state.hands[t]
             while hand_t:
                 card = hand_t.pop()
-                state.discards[t].append(card)
+                self._discard(state, t, card)
                 if card == PRINCESS:
                     state.eliminated[t] = True
                     state.protected[t] = False
@@ -299,7 +305,7 @@ class LoveLetterGame(GameInterface):
         state.protected[p] = False
         hand = state.hands[p]
         while hand:
-            state.discards[p].append(hand.pop())
+            self._discard(state, p, hand.pop())
         # 出局 → 手牌公开揭示，清除所有人对该玩家的私密知识
         for obs in range(state.num_players):
             state.known[obs][p] = None
@@ -489,6 +495,11 @@ class LoveLetterGame(GameInterface):
     def auxiliary_shape(self) -> tuple[int, ...]:
         """辅助任务输出维度：预测 (n-1) 个相对对手的手牌值（8 类）。"""
         return ((self._num_players - 1) * 8,)
+
+    @property
+    def encoder_params(self) -> dict:
+        """模型编码器所需的游戏特定参数（GRU 序列编码用）。"""
+        return self._encoder.model_encoder_params
 
     def get_auxiliary_labels(self, state: LoveLetterState, player_id: int):
         """上帝视角辅助标签：每个相对对手的手牌值（0..7）或 -1（出局/无牌）。"""
