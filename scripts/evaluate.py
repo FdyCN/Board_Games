@@ -412,7 +412,7 @@ def main():
         "--encoder",
         type=str,
         default="mlp",
-        choices=["mlp", "attention"],
+        choices=["mlp", "attention", "gru"],
         help="编码器类型，须与训练时一致（默认: mlp）",
     )
 
