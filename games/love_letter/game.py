@@ -150,6 +150,7 @@ class LoveLetterGame(GameInterface):
         state.discards = [[] for _ in range(state.num_players)]
         state.eliminated = [False] * state.num_players
         state.protected = [False] * state.num_players
+        state.known = [[None] * state.num_players for _ in range(state.num_players)]
         state.current_player = start_player
         state.round_over = False
         # 起始玩家抽第二张牌（手牌 2 张）
@@ -238,12 +239,24 @@ class LoveLetterGame(GameInterface):
         n = state.num_players
         t = (p + action.target) % n if action.target >= 0 else -1
 
+        # 玩家 p 打出了牌 c：若别人之前知道 p 手牌是 c，则 p 留的是新抽的牌（未知）
+        for obs in range(n):
+            if state.known[obs][p] == c:
+                state.known[obs][p] = None
+
         if c == HANDMAID:
             state.protected[p] = True
         elif c == PRIEST:
-            pass  # 看对手手牌：在完美信息建模下无状态变化
+            # p 看到 t 的手牌
+            if t >= 0 and state.hands[t]:
+                state.known[p][t] = state.hands[t][0]
         elif c == BARON:
             if t >= 0:
+                # 双方互相看到对方手牌
+                if state.hands[t]:
+                    state.known[p][t] = state.hands[t][0]
+                if state.hands[p]:
+                    state.known[t][p] = state.hands[p][0]
                 my_val = state.hands[p][0] if state.hands[p] else 0
                 their_val = state.hands[t][0] if state.hands[t] else 0
                 if my_val < their_val:
@@ -259,11 +272,20 @@ class LoveLetterGame(GameInterface):
                 if card == PRINCESS:
                     state.eliminated[t] = True
                     state.protected[t] = False
+            # t 手牌公开弃掉并重抽 → 所有人对 t 的知识失效
+            for obs in range(n):
+                state.known[obs][t] = None
             if not state.eliminated[t] and state.deck:
                 hand_t.append(state.deck.pop())
         elif c == KING:
             if t >= 0:
+                # 双方看到交换前的手牌，然后交换
+                p_card = state.hands[p][0] if state.hands[p] else None
+                t_card = state.hands[t][0] if state.hands[t] else None
                 state.hands[p], state.hands[t] = state.hands[t], state.hands[p]
+                # 交换后：t 拿的是 p 的旧牌，p 拿的是 t 的旧牌
+                state.known[p][t] = p_card
+                state.known[t][p] = t_card
         elif c == GUARD:
             g = action.guess
             if t >= 0 and state.hands[t] and state.hands[t][0] == g:
@@ -278,6 +300,9 @@ class LoveLetterGame(GameInterface):
         hand = state.hands[p]
         while hand:
             state.discards[p].append(hand.pop())
+        # 出局 → 手牌公开揭示，清除所有人对该玩家的私密知识
+        for obs in range(state.num_players):
+            state.known[obs][p] = None
 
     def _advance_player(self, state: LoveLetterState) -> int:
         """推进到下一个存活玩家；若牌堆空则本轮结束（返回轮胜者）。"""

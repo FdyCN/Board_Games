@@ -29,6 +29,7 @@ def _make_state(n=3):
         discards=[[] for _ in range(n)],
         eliminated=[False] * n,
         protected=[False] * n,
+        known=[[None] * n for _ in range(n)],
         current_player=0,
     )
 
@@ -58,7 +59,7 @@ def test_action_space_size():
 
 def test_observation_shape():
     game = LoveLetterGame(num_players=3)
-    assert game.observation_shape == (26 + 11 * 3,)  # 59
+    assert game.observation_shape == (25 + 12 * 3,)  # 61
 
 
 def test_auxiliary_labels():
@@ -283,6 +284,61 @@ def test_eliminate_opponent_reward():
     new_state, rewards, done, info = game.step(PlayCardAction(GUARD, target=1, guess=PRIEST))
     assert new_state.eliminated[1]
     assert info["dense_reward"] == pytest.approx(-0.01 + 0.3)
+
+
+def test_priest_records_known():
+    game = LoveLetterGame(num_players=3)
+    state = _make_state()
+    state.hands[0] = [PRIEST, HANDMAID]
+    state.hands[1] = [PRINCESS]
+    state.hands[2] = [KING]
+    game._play_card(state, 0, PlayCardAction(PRIEST, target=1))
+    assert state.known[0][1] == PRINCESS
+    assert state.known[0][2] is None
+
+
+def test_baron_records_known_both_ways():
+    game = LoveLetterGame(num_players=3)
+    state = _make_state()
+    state.hands[0] = [BARON, GUARD]  # 打出男爵，剩余卫兵(1)
+    state.hands[1] = [GUARD]         # 对手也是卫兵(1) → 平局，无人出局
+    game._play_card(state, 0, PlayCardAction(BARON, target=1))
+    assert state.known[0][1] == GUARD
+    assert state.known[1][0] == GUARD
+
+
+def test_king_records_known_after_swap():
+    game = LoveLetterGame(num_players=3)
+    state = _make_state()
+    state.hands[0] = [KING, GUARD]  # 打出国王，剩余卫兵(1)
+    state.hands[1] = [PRINCESS]
+    game._play_card(state, 0, PlayCardAction(KING, target=1))
+    assert state.hands[0] == [PRINCESS]
+    assert state.hands[1] == [GUARD]
+    assert state.known[0][1] == GUARD     # 玩家1 现在拿卫兵
+    assert state.known[1][0] == PRINCESS  # 玩家0 现在拿公主
+
+
+def test_prince_invalidates_known():
+    game = LoveLetterGame(num_players=3)
+    state = _make_state()
+    state.hands[0] = [PRINCE, HANDMAID]
+    state.hands[1] = [PRIEST]
+    state.deck = [KING]
+    state.known[0][1] = PRIEST  # 玩家0 之前知道玩家1 是神父
+    game._play_card(state, 0, PlayCardAction(PRINCE, target=1))
+    assert state.known[0][1] is None  # 玩家1 弃神父重抽 → 知识失效
+    assert state.hands[1] == [KING]
+
+
+def test_playing_known_card_invalidates():
+    game = LoveLetterGame(num_players=3)
+    state = _make_state()
+    state.hands[0] = [GUARD, HANDMAID]
+    state.hands[2] = [PRINCESS]
+    state.known[1][0] = GUARD  # 玩家1 之前知道玩家0 是卫兵
+    game._play_card(state, 0, PlayCardAction(GUARD, target=2, guess=PRIEST))
+    assert state.known[1][0] is None  # 玩家0 打出了那张卫兵 → 知识失效
 
 
 if __name__ == "__main__":

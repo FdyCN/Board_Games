@@ -10,11 +10,12 @@
     2. 自己公开信息 (10 维)：弃牌堆各值数量(8) + 出局(1) + 受保护(1)
     3. 其他玩家公开信息 ((n-1) × 10 维)：相对顺序（下家、下下家…）
     4. 爱心标记 (n 维)：自己 + 各对手，按相对顺序
-    5. 未露面卡计数 (8 维)：每种牌还有几张「我没看到」（牌堆/对手手牌/移除牌）
-    6. 牌堆剩余 (1 维，/16 归一化)
-    7. 全局行动计数 (1 维，/100 归一化)
+    5. 私密知识 (n-1 维)：我私底下知道每个相对对手是哪张牌（0=未知）
+    6. 未露面卡计数 (8 维)：每种牌还有几张「我没看到」（牌堆/对手手牌/移除牌）
+    7. 牌堆剩余 (1 维，/16 归一化)
+    8. 全局行动计数 (1 维，/100 归一化)
 
-    总计 = 26 + 11n 维。
+    总计 = 25 + 12n 维。
 
 隐藏信息约定：只编码自己手牌；其他玩家手牌不编码（由「未露面卡计数」作为信念先验）。
 """
@@ -32,7 +33,7 @@ class LoveLetterEncoder:
 
     def __init__(self, num_players: int):
         self.num_players = num_players
-        self.observation_dim = 26 + 11 * num_players
+        self.observation_dim = 25 + 12 * num_players
 
     def encode(self, state: LoveLetterState, player_id: int) -> np.ndarray:
         n = state.num_players
@@ -57,6 +58,9 @@ class LoveLetterEncoder:
 
         # 4. 爱心标记（相对顺序）
         idx = self._encode_tokens(obs, idx, state, player_id)
+
+        # 4.5 私密知识（我知道每个相对对手手里是几；0=未知）
+        idx = self._encode_known(obs, idx, state, player_id)
 
         # 5. 未露面卡计数（信念先验）
         idx = self._encode_unseen(obs, idx, state, player_id)
@@ -105,6 +109,18 @@ class LoveLetterEncoder:
         for r in range(1, n):
             other = (player_id + r) % n
             obs[idx] = state.tokens[other] / max(state.target_tokens, 1)
+            idx += 1
+        return idx
+
+    def _encode_known(
+        self, obs: np.ndarray, idx: int, state: LoveLetterState, player_id: int
+    ) -> int:
+        """编码私密知识：每个相对对手，我私底下知道他是哪张牌（0=未知）。"""
+        n = state.num_players
+        for r in range(1, n):
+            other = (player_id + r) % n
+            known = state.known[player_id][other]
+            obs[idx] = 0.0 if known is None else known / 8.0
             idx += 1
         return idx
 
