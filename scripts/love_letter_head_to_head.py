@@ -32,6 +32,7 @@ sys.path.insert(0, str(project_root))
 
 from games.registry import create_game
 from games.love_letter.heuristic import heuristic_choose
+from games.love_letter.strong_bot import strong_choose
 from models.model_factory import create_model
 from agents.neural_agent import NeuralAgent
 
@@ -46,6 +47,12 @@ def make_selector(spec, game, device):
     if spec == "heuristic":
         def sel(game, state, player, legal_idx):
             action = heuristic_choose(game, state, player)
+            return game.action_to_index(action, state)
+        return sel
+
+    if spec == "strong":
+        def sel(game, state, player, legal_idx):
+            action = strong_choose(game, state, player)
             return game.action_to_index(action, state)
         return sel
 
