@@ -36,6 +36,7 @@ sys.path.insert(0, str(project_root))
 from configs.config_loader import Config, build_game_kwargs
 from games.registry import create_game
 from games.love_letter.heuristic import heuristic_choose
+from games.love_letter.strong_bot import strong_choose
 from models.model_factory import create_model
 from agents.neural_agent import NeuralAgent
 from training.algorithms.ppo import PPO
@@ -67,6 +68,9 @@ def league_episode(game, seats, current_agent, gamma, gae_lambda, rng, device):
             pending = (p, obs, action_idx, info["log_prob"], info["value"], mask, aux_targets)
         elif spec_type == "heuristic":
             action = heuristic_choose(game, state, p)
+            action_idx = game.action_to_index(action, state)
+        elif spec_type == "strong":
+            action = strong_choose(game, state, p)
             action_idx = game.action_to_index(action, state)
         elif spec_type == "random":
             action_idx = rng.choice(legal_idx)
@@ -161,8 +165,8 @@ def main():
         outcome_coef=c.algorithm.outcome_coef,
     )
 
-    # 对手池：随机 + 规则 bot + （后续加入）冻结快照
-    pool: list[tuple[str, object | None]] = [("random", None), ("heuristic", None)]
+    # 对手池：随机 + 强规则 bot（84.5%） + （后续加入）冻结快照
+    pool: list[tuple[str, object | None]] = [("random", None), ("strong", None)]
     rng = random.Random(c.game.seed)
 
     log_path = Path(args.log_file)
