@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>情书 · 人机对战</title>
+<style>
+  :root { --bg:#1a1a2e; --panel:#16213e; --panel2:#0f3460; --text:#eee; --muted:#8ab; --accent:#e94560; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); min-height:100vh; padding:16px; }
+  .wrap { max-width:760px; margin:0 auto; }
+  h1 { text-align:center; font-size:22px; margin-bottom:10px; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; background:var(--panel); padding:10px 14px; border-radius:10px; margin-bottom:12px; flex-wrap:wrap; gap:8px; }
+  .topbar .info span { margin-right:14px; color:var(--muted); font-size:13px; }
+  .topbar .info b { color:var(--text); }
+  button { background:var(--accent); color:#fff; border:none; padding:8px 14px; border-radius:8px; cursor:pointer; font-size:14px; }
+  button:hover { filter:brightness(1.1); }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  .opponents { display:flex; gap:12px; margin-bottom:12px; }
+  .opponent { flex:1; background:var(--panel); border-radius:10px; padding:12px; }
+  .opponent .name { font-size:15px; font-weight:bold; margin-bottom:6px; }
+  .opponent .meta { font-size:12px; color:var(--muted); margin-bottom:6px; }
+  .chips { display:flex; flex-wrap:wrap; gap:5px; }
+  .chip { width:34px; height:48px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:12px; color:#fff; font-weight:bold; position:relative; }
+  .chip small { position:absolute; bottom:3px; font-size:9px; opacity:.9; }
+  .known { font-size:12px; color:#ffd166; margin-top:6px; }
+  .badge { display:inline-block; font-size:11px; padding:1px 7px; border-radius:10px; margin-left:5px; }
+  .badge.elim { background:#e94560; }
+  .badge.prot { background:#2ecc71; }
+  .badge.turn { background:#f1c40f; color:#333; }
+  .events { background:var(--panel); border-radius:10px; padding:10px 14px; margin-bottom:12px; max-height:130px; overflow-y:auto; font-size:12px; color:var(--muted); line-height:1.7; }
+  .events b { color:var(--text); }
+  .myarea { background:var(--panel); border-radius:10px; padding:14px; }
+  .myarea .head { display:flex; justify-content:space-between; margin-bottom:10px; font-size:14px; }
+  .hand { display:flex; gap:14px; justify-content:center; margin-bottom:12px; }
+  .card { width:110px; height:156px; border-radius:12px; color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; transition:transform .12s, box-shadow .12s; position:relative; box-shadow:0 4px 10px rgba(0,0,0,.35); }
+  .card:hover { transform:translateY(-4px); }
+  .card.selected { outline:3px solid #fff; transform:translateY(-6px); }
+  .card .emoji { font-size:40px; }
+  .card .num { font-size:34px; font-weight:bold; }
+  .card .name { font-size:16px; font-weight:bold; margin:2px 0; }
+  .card .desc { font-size:10px; opacity:.85; text-align:center; padding:0 8px; }
+  .card.disabled { cursor:not-allowed; opacity:.6; }
+  .actionbar { margin-top:10px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .actionbar .label { font-size:13px; color:var(--muted); }
+  .sel { background:var(--panel2); border:1px solid #555; color:#fff; padding:7px 12px; border-radius:8px; cursor:pointer; }
+  .sel.chosen { background:var(--accent); border-color:var(--accent); }
+  .overlay { position:fixed; inset:0; background:rgba(0,0,0,.7); display:flex; align-items:center; justify-content:center; }
+  .overlay .box { background:var(--panel); padding:30px 40px; border-radius:14px; text-align:center; }
+  .overlay .box h2 { font-size:26px; margin-bottom:12px; }
+  .overlay .box p { color:var(--muted); margin-bottom:18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🌹 情书 · 人机对战</h1>
+
+  <div class="topbar">
+    <div class="info">
+      <span>第 <b id="round">-</b> 轮</span>
+      <span>牌堆 <b id="deck">-</b></span>
+      <span>目标 <b id="targetTokens">-</b> 个爱心标记</span>
+    </div>
+    <button onclick="newGame()">🔄 重新开始</button>
+  </div>
+
+  <div class="opponents" id="opponents"></div>
+
+  <div class="events" id="events"></div>
+
+  <div class="myarea">
+    <div class="head">
+      <span>🧑 你（爱心 <b id="myTokens">0</b>）</span>
+      <span id="turnHint" style="color:var(--accent)"></span>
+    </div>
+    <div class="hand" id="hand"></div>
+    <div class="chips" id="myDiscards" style="justify-content:center"></div>
+    <div class="actionbar" id="actionbar"></div>
+  </div>
+</div>
+
+<script>
+const CARD_INFO = {
+  1:{name:'卫兵', emoji:'🛡️', color:'#4a90d9', desc:'猜一名对手的手牌'},
+  2:{name:'神父', emoji:'⛪', color:'#9b59b6', desc:'偷看一名对手的手牌'},
+  3:{name:'男爵', emoji:'⚔️', color:'#e67e22', desc:'与一名对手比大小'},
+  4:{name:'侍女', emoji:'👸', color:'#e74c3c', desc:'免疫直到下回合'},
+  5:{name:'王子', emoji:'🤴', color:'#2ecc71', desc:'令一人弃牌重抽'},
+  6:{name:'国王', emoji:'👑', color:'#f1c40f', desc:'与一名对手换手牌'},
+  7:{name:'女伯爵', emoji:'💃', color:'#1abc9c', desc:'有国王/王子必须打'},
+  8:{name:'公主', emoji:'🌹', color:'#fd79a8', desc:'打出即出局'},
+};
+const NEED_TARGET = {2:1,3:1,5:1,6:1,1:1};   // 需要选目标
+const NEED_GUESS = {1:1};                       // 卫兵需要猜
+
+let state = null, selectedCard = null, selectedTarget = null, selectedGuess = null;
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) { const e = await r.json(); alert(e.error || '出错了'); return null; }
+  return r.json();
+}
+async function load() { state = await api('/api/state'); render(); }
+async function newGame() { state = await api('/api/new_game', {method:'POST'}); render(); }
+
+function cardColor(v) { return CARD_INFO[v] ? CARD_INFO[v].color : '#666'; }
+function cardName(v) { return CARD_INFO[v] ? CARD_INFO[v].name : v; }
+function chipHtml(v) { return `<div class="chip" style="background:${cardColor(v)}">${cardName(v)}<small>${v}</small></div>`; }
+function targetName(rel) { return rel === 0 ? '自己' : (state ? `AI ${rel}` : rel); }
+
+function render() {
+  if (!state) return;
+  document.getElementById('round').textContent = state.round;
+  document.getElementById('deck').textContent = state.deck_size;
+  document.getElementById('targetTokens').textContent = state.target_tokens;
+  document.getElementById('myTokens').textContent = state.players[0].tokens;
+
+  // 对手区
+  const opp = document.getElementById('opponents');
+  opp.innerHTML = '';
+  for (let p = 1; p < state.players.length; p++) {
+    const pl = state.players[p];
+    let badges = '';
+    if (pl.current) badges += '<span class="badge turn">行动中</span>';
+    if (pl.eliminated) badges += '<span class="badge elim">出局</span>';
+    if (pl.protected) badges += '<span class="badge prot">受保护</span>';
+    const known = state.known[p] ? `<div class="known">👁 你已知他持有：${cardName(state.known[p])}(${state.known[p]})</div>` : '';
+    opp.innerHTML += `
+      <div class="opponent">
+        <div class="name">🤖 ${pl.name} ${badges}</div>
+        <div class="meta">爱心 ${pl.tokens} · 弃牌 ${pl.discards.length} 张</div>
+        <div class="chips">${pl.discards.map(chipHtml).join('') || '<span style="color:#555;font-size:12px">（无弃牌）</span>'}</div>
+        ${known}
+      </div>`;
+  }
+
+  // 事件日志
+  const ev = document.getElementById('events');
+  ev.innerHTML = state.events.map(e => `<b>${e.player === 0 ? '你' : 'AI ' + e.player}</b> 打出 <b>${e.name}</b>`).join('<br>') || '<span style="color:#555">对局开始…</span>';
+  ev.scrollTop = ev.scrollHeight;
+
+  // 我的手牌
+  const hand = document.getElementById('hand');
+  hand.innerHTML = '';
+  state.my_hand.forEach(v => {
+    const c = CARD_INFO[v];
+    const cls = selectedCard === v ? 'card selected' : 'card';
+    const dis = state.phase !== 'human_turn' ? 'disabled' : '';
+    hand.innerHTML += `
+      <div class="${cls} ${dis}" style="background:${c.color}" onclick="pickCard(${v})">
+        <div class="emoji">${c.emoji}</div>
+        <div class="name">${c.name}</div>
+        <div class="num">${v}</div>
+        <div class="desc">${c.desc}</div>
+      </div>`;
+  });
+
+  // 我的弃牌
+  document.getElementById('myDiscards').innerHTML = (state.players[0].discards || []).map(chipHtml).join('');
+
+  // 回合提示 + 操作条
+  const hint = document.getElementById('turnHint');
+  const bar = document.getElementById('actionbar');
+
+  if (state.phase === 'game_over') {
+    hint.textContent = '对局结束';
+    bar.innerHTML = '';
+    const winnerName = state.winner === 0 ? '你赢了！🎉' : `AI ${state.winner} 获胜`;
+    showOverlay(winnerName);
+  } else if (state.phase === 'human_turn') {
+    hint.textContent = '轮到你行动';
+    renderActionBar(bar);
+  } else {
+    hint.textContent = 'AI 思考中…';
+    bar.innerHTML = '';
+  }
+}
+
+function renderActionBar(bar) {
+  bar.innerHTML = '';
+  if (!selectedCard) {
+    bar.innerHTML = '<span class="label">👆 先点选一张要打出的牌</span>';
+    return;
+  }
+  const needTarget = NEED_TARGET[selectedCard];
+  const needGuess = NEED_GUESS[selectedCard];
+
+  if (needTarget) {
+    // 该卡的可选目标（相对编号）
+    const targets = [...new Set(state.legal_actions.filter(a => a.card === selectedCard).map(a => a.target))];
+    bar.innerHTML = '<span class="label">🎯 选目标：</span>';
+    targets.forEach(t => {
+      const b = document.createElement('button');
+      b.className = 'sel' + (selectedTarget === t ? ' chosen' : '');
+      b.textContent = targetName(t);
+      b.onclick = () => { selectedTarget = t; selectedGuess = null; render(); };
+      bar.appendChild(b);
+    });
+  }
+
+  if (needGuess && selectedTarget != null) {
+    // 卫兵：选猜测牌（2-8）
+    const guesses = [...new Set(state.legal_actions.filter(a => a.card === selectedCard && a.target === selectedTarget).map(a => a.guess))];
+    bar.innerHTML += '<span class="label">❓ 猜牌：</span>';
+    guesses.forEach(g => {
+      const b = document.createElement('button');
+      b.className = 'sel' + (selectedGuess === g ? ' chosen' : '');
+      b.textContent = `${cardName(g)}(${g})`;
+      b.onclick = () => { selectedGuess = g; render(); };
+      bar.appendChild(b);
+    });
+  }
+
+  // 确认按钮
+  const ready = (needTarget ? selectedTarget != null : true) && (needGuess ? selectedGuess != null : true);
+  const ok = document.createElement('button');
+  ok.textContent = '✅ 出牌';
+  ok.disabled = !ready;
+  ok.style.marginLeft = 'auto';
+  ok.onclick = submit;
+  bar.appendChild(ok);
+}
+
+function pickCard(v) {
+  if (state.phase !== 'human_turn') return;
+  selectedCard = v; selectedTarget = null; selectedGuess = null;
+  render();
+}
+
+async function submit() {
+  const body = { card: selectedCard, target: selectedTarget ?? -1, guess: selectedGuess ?? -1 };
+  selectedCard = selectedTarget = selectedGuess = null;
+  state = await api('/api/act', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  render();
+}
+
+function showOverlay(msg) {
+  let o = document.getElementById('overlay');
+  if (!o) { o = document.createElement('div'); o.className='overlay'; o.id='overlay'; document.body.appendChild(o); }
+  const emoji = msg.includes('你赢了') ? '🎉' : '🤖';
+  o.innerHTML = `<div class="box"><h2>${emoji} ${msg}</h2><p>本局结束</p><button onclick="closeOverlay();newGame()">再来一局</button></div>`;
+}
+function closeOverlay() { const o = document.getElementById('overlay'); if (o) o.remove(); }
+
+load();
+</script>
+</body>
+</html>
