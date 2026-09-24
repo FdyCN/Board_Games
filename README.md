@@ -92,6 +92,18 @@ python scripts/evaluate.py \
     --mode evolution --games 50
 ```
 
+### 人机对战（Web）
+
+在浏览器里和训练好的 AI 对战（支持情书 / 璀璨宝石）：
+
+```bash
+python web/app.py
+# 浏览器打开 http://127.0.0.1:8000，选择游戏即可
+```
+
+- 后端只暴露「你可见的信息」（不泄露对手隐藏手牌）
+- 你落子后，AI 回合自动跑完；支持 `take/reserve/buy` 等完整规则
+
 ### 与开源模型对比（Splendor 专用）
 
 仓库引入了 [cestpasphoto/alpha-zero-general](https://github.com/cestpasphoto/alpha-zero-general) 作为 git submodule 做基准：
