@@ -100,8 +100,8 @@ async function api(path, opts) {
   if (!r.ok) { const e = await r.json(); alert(e.error || '出错了'); return null; }
   return r.json();
 }
-async function load() { state = await api('/api/state'); render(); }
-async function newGame() { state = await api('/api/new_game', {method:'POST'}); render(); }
+async function load() { state = await api('/love_letter/api/state'); render(); }
+async function newGame() { state = await api('/love_letter/api/new_game', {method:'POST'}); render(); }
 
 function cardColor(v) { return CARD_INFO[v] ? CARD_INFO[v].color : '#666'; }
 function cardName(v) { return CARD_INFO[v] ? CARD_INFO[v].name : v; }
@@ -230,7 +230,7 @@ function pickCard(v) {
 async function submit() {
   const body = { card: selectedCard, target: selectedTarget ?? -1, guess: selectedGuess ?? -1 };
   selectedCard = selectedTarget = selectedGuess = null;
-  state = await api('/api/act', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  state = await api('/love_letter/api/act', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
   render();
 }
 

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>璀璨宝石 · 人机对战</title>
+<style>
+  :root { --bg:#16161d; --panel:#1f1f2a; --panel2:#2a2a3a; --text:#eee; --muted:#9aa; --accent:#4a9eff; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); padding:14px; }
+  .wrap { max-width:900px; margin:0 auto; }
+  h1 { text-align:center; font-size:20px; margin-bottom:10px; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; background:var(--panel); padding:9px 13px; border-radius:9px; margin-bottom:10px; flex-wrap:wrap; gap:8px; }
+  .topbar .info { color:var(--muted); font-size:13px; }
+  .topbar .info b { color:var(--text); }
+  button { background:var(--accent); color:#fff; border:none; padding:7px 13px; border-radius:7px; cursor:pointer; font-size:13px; }
+  button:hover { filter:brightness(1.12); }
+  button:disabled { opacity:.35; cursor:not-allowed; }
+  .section { background:var(--panel); border-radius:9px; padding:11px 13px; margin-bottom:10px; }
+  .section h3 { font-size:13px; color:var(--muted); margin-bottom:8px; }
+
+  .gem { display:inline-flex; align-items:center; gap:4px; margin-right:8px; font-size:14px; }
+  .dot { width:16px; height:16px; border-radius:50%; display:inline-block; border:1px solid rgba(255,255,255,.3); }
+  .dot.red{background:#e74c3c}.dot.green{background:#2ecc71}.dot.blue{background:#3498db}
+  .dot.white{background:#ecf0f1}.dot.black{background:#5b5b6b}.dot.gold{background:#f1c40f}
+
+  .nobles { display:flex; flex-wrap:wrap; gap:8px; }
+  .noble { background:var(--panel2); border-radius:7px; padding:7px 9px; font-size:12px; }
+  .tiers { display:flex; flex-direction:column; gap:9px; }
+  .tierrow { display:flex; gap:8px; flex-wrap:wrap; }
+  .tierlabel { font-size:12px; color:var(--muted); align-self:center; width:20px; }
+  .card { background:var(--panel2); border-radius:8px; padding:8px; width:150px; position:relative; }
+  .card .pts { font-size:20px; font-weight:bold; position:absolute; top:6px; left:8px; }
+  .card .bonus { position:absolute; top:8px; right:8px; }
+  .card .cost { margin-top:18px; display:flex; flex-direction:column; gap:3px; font-size:13px; }
+  .card .btns { margin-top:8px; display:flex; gap:5px; }
+  .card .btns button { flex:1; padding:4px 0; font-size:12px; }
+  .card .btns .buy { background:#2ecc71; }
+  .card .btns .rsv { background:#e67e22; }
+  .tier-1{border-top:3px solid #27ae60}.tier-2{border-top:3px solid #f39c12}.tier-3{border-top:3px solid #2980b9}
+
+  .players { display:flex; gap:10px; }
+  .player { flex:1; background:var(--panel2); border-radius:8px; padding:9px; font-size:12px; }
+  .player .nm { font-weight:bold; margin-bottom:5px; }
+  .player .ln { color:var(--muted); margin:2px 0; }
+  .mine { outline:2px solid var(--accent); }
+
+  .actionbar { background:var(--panel); border-radius:9px; padding:11px 13px; }
+  .actionbar .row { display:flex; align-items:center; flex-wrap:wrap; gap:7px; margin-bottom:8px; }
+  .actionbar .label { font-size:13px; color:var(--muted); margin-right:4px; }
+  .gembtn { display:inline-flex; align-items:center; gap:4px; background:var(--panel2); border:1px solid #555; color:#fff; padding:5px 9px; border-radius:6px; cursor:pointer; font-size:13px; }
+  .gembtn.sel { background:var(--accent); border-color:var(--accent); }
+  .overlay { position:fixed; inset:0; background:rgba(0,0,0,.7); display:flex; align-items:center; justify-content:center; }
+  .overlay .box { background:var(--panel); padding:28px 38px; border-radius:13px; text-align:center; }
+  .overlay h2 { font-size:24px; margin-bottom:10px; }
+  .overlay p { color:var(--muted); margin-bottom:16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>💎 璀璨宝石 · 人机对战</h1>
+
+  <div class="topbar">
+    <div class="info">
+      <span>回合 <b id="turn">-</b></span>
+      <span style="margin-left:12px">目标 <b>15</b> 分</span>
+      <span id="hint" style="margin-left:12px;color:var(--accent)"></span>
+    </div>
+    <button onclick="newGame()">🔄 重新开始</button>
+  </div>
+
+  <div class="section" id="bankSection">
+    <h3>🏦 宝石堆</h3>
+    <div id="gemBank"></div>
+  </div>
+
+  <div class="section" id="nobleSection">
+    <h3>👑 贵族</h3>
+    <div class="nobles" id="nobles"></div>
+  </div>
+
+  <div class="section" id="boardSection">
+    <h3>🃏 场上卡牌（点「买」购买 / 点「留」保留）</h3>
+    <div class="tiers" id="tiers"></div>
+  </div>
+
+  <div class="section" id="playersSection">
+    <h3>👥 玩家</h3>
+    <div class="players" id="players"></div>
+  </div>
+
+  <div class="actionbar" id="actionbar"></div>
+</div>
+
+<script>
+const GEM = [
+  {name:'红', cls:'red'}, {name:'绿', cls:'green'}, {name:'蓝', cls:'blue'},
+  {name:'白', cls:'white'}, {name:'黑', cls:'black'}, {name:'金', cls:'gold'},
+];
+let state = null, selColors = new Set();
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) { const e = await r.json().catch(()=>({})); alert(e.detail || '出错了'); return null; }
+  return r.json();
+}
+async function load() { state = await api('/splendor/api/state'); render(); }
+async function newGame() { selColors.clear(); state = await api('/splendor/api/new_game', {method:'POST'}); render(); }
+
+function dot(cls) { return `<span class="dot ${cls}"></span>`; }
+function gemsRow(gems, withCount) {
+  let s = '';
+  for (let i=0;i<6;i++) {
+    if (gems[i] === 0 && !withCount) continue;
+    s += `<span class="gem">${dot(GEM[i].cls)}${withCount ? gems[i] : ''}</span>`;
+  }
+  return s || '<span style="color:#555">—</span>';
+}
+function costRow(cost) {
+  let s = '';
+  for (let i=0;i<5;i++) if (cost[i]>0) s += `<span class="gem">${dot(GEM[i].cls)}${cost[i]}</span>`;
+  return s || '免费';
+}
+
+function cardHtml(c, isReserved) {
+  const tierCls = 'tier-' + c.tier;
+  const buyOk = state.legal_actions.some(a => a.type==='buy' && a.card_id===c.card_id && a.from_reserved===isReserved);
+  const rsvOk = state.legal_actions.some(a => a.type==='reserve' && a.card_id===c.card_id);
+  return `
+    <div class="card ${tierCls}">
+      <div class="pts">${c.points}</div>
+      <div class="bonus">${dot(GEM[c.bonus].cls)}</div>
+      <div class="cost">${costRow(c.cost)}</div>
+      <div class="btns">
+        <button class="buy" ${buyOk?'':'disabled'} onclick="buy(${c.card_id},${isReserved})">买</button>
+        ${!isReserved ? `<button class="rsv" ${rsvOk?'':'disabled'} onclick="reserve(${c.card_id},${c.tier})">留</button>` : ''}
+      </div>
+    </div>`;
+}
+
+function render() {
+  if (!state) return;
+  document.getElementById('turn').textContent = state.turn;
+  const hint = document.getElementById('hint');
+  if (state.phase === 'game_over') {
+    hint.textContent = '对局结束';
+    document.getElementById('actionbar').innerHTML = '';
+    showOverlay(state.winner === 0 ? '你赢了！🎉' : `AI ${state.winner} 获胜`);
+  } else if (state.phase === 'human_turn') {
+    hint.textContent = '轮到你行动';
+    renderActions();
+  } else {
+    hint.textContent = 'AI 思考中…';
+    document.getElementById('actionbar').innerHTML = '';
+  }
+
+  // 宝石堆
+  document.getElementById('gemBank').innerHTML = gemsRow(state.gem_bank, true);
+  // 贵族
+  document.getElementById('nobles').innerHTML = state.nobles.map(n =>
+    `<div class="noble">3分：${costRow(n.requirements)}</div>`).join('') || '<span style="color:#555">（无贵族）</span>';
+
+  // 场上卡牌（按 tier 分组）
+  const tiers = document.getElementById('tiers');
+  tiers.innerHTML = '';
+  [1,2,3].forEach(t => {
+    const cards = state.open_cards.filter(c => c.tier === t);
+    tiers.innerHTML += `
+      <div class="tierrow"><span class="tierlabel">T${t}</span>
+        ${cards.map(c => cardHtml(c, false)).join('') || '<span style="color:#555">（空）</span>'}
+      </div>`;
+  });
+
+  // 玩家
+  document.getElementById('players').innerHTML = state.players.map((p,i) => `
+    <div class="player ${i===0?'mine':''}">
+      <div class="nm">${i===0?'🧑 你':'🤖 '+p.name} ${p.current?'<span style="color:var(--accent)">●</span>':''}</div>
+      <div class="ln">分 <b>${p.points}</b> · 贵族 ${p.nobles}</div>
+      <div class="ln">宝石 ${gemsRow(p.gems, true)}</div>
+      <div class="ln">加成 ${gemsRow(p.bonuses, false)}</div>
+      ${p.reserved.length ? `<div class="ln">保留 ${p.reserved.length} 张</div>` : ''}
+      ${i===0 && p.reserved.length ? `<div class="reserved" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px">${p.reserved.map(c => cardHtml(c, true)).join('')}</div>` : ''}
+    </div>`).join('');
+}
+
+function renderActions() {
+  const bar = document.getElementById('actionbar');
+  bar.innerHTML = '';
+
+  // 拿 3 个不同色
+  let takeRow = '<div class="row"><span class="label">🎨 拿 3 个不同色（点选）：</span>';
+  for (let i=0;i<5;i++) {
+    const ok = state.legal_actions.some(a => a.type==='take_gems' && a.gems[i]===1 && a.gems.reduce((s,x)=>s+x,0)===3);
+    const sel = selColors.has(i);
+    takeRow += `<button class="gembtn ${sel?'sel':''}" ${ok?'':'disabled'} onclick="toggleColor(${i})">${dot(GEM[i].cls)}${GEM[i].name}</button>`;
+  }
+  takeRow += `<button onclick="submitTake3()" ${selColors.size===3?'':'disabled'}>✅ 拿这3个</button></div>`;
+  bar.innerHTML += takeRow;
+
+  // 拿 2 个同色
+  let twoRow = '<div class="row"><span class="label">⏫ 拿 2 个同色：</span>';
+  for (let i=0;i<5;i++) {
+    const ok = state.legal_actions.some(a => a.type==='take_gems' && a.gems[i]===2);
+    twoRow += `<button class="gembtn" ${ok?'':'disabled'} onclick="take2(${i})">${dot(GEM[i].cls)}${GEM[i].name}×2</button>`;
+  }
+  twoRow += '</div>';
+  bar.innerHTML += twoRow;
+
+  // 保留牌堆顶 + 过牌
+  let miscRow = '<div class="row"><span class="label">📦 保留牌堆顶：</span>';
+  for (let t=1;t<=3;t++) {
+    const ok = state.legal_actions.some(a => a.type==='reserve' && a.card_id===null && a.tier===t);
+    miscRow += `<button class="gembtn" ${ok?'':'disabled'} onclick="reserveDeck(${t})">T${t}牌堆</button>`;
+  }
+  miscRow += `<button onclick="pass()" style="margin-left:auto">过牌</button></div>`;
+  bar.innerHTML += miscRow;
+}
+
+function toggleColor(i) { selColors.has(i) ? selColors.delete(i) : (selColors.size<3 && selColors.add(i)); renderActions(); }
+function take2(i) { submit({type:'take_gems', gems:[i===0?2:0,i===1?2:0,i===2?2:0,i===3?2:0,i===4?2:0]}); }
+function submitTake3() {
+  const gems = [0,0,0,0,0]; selColors.forEach(i => gems[i]=1); selColors.clear();
+  submit({type:'take_gems', gems});
+}
+function buy(cardId, fromReserved) { submit({type:'buy', card_id:cardId, from_reserved:fromReserved}); }
+function reserve(cardId, tier) { submit({type:'reserve', tier, card_id:cardId}); }
+function reserveDeck(tier) { submit({type:'reserve', tier, card_id:null}); }
+function pass() { submit({type:'pass'}); }
+
+async function submit(body) {
+  state = await api('/splendor/api/act', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  render();
+}
+
+function showOverlay(msg) {
+  let o = document.getElementById('overlay');
+  if (!o) { o = document.createElement('div'); o.className='overlay'; o.id='overlay'; document.body.appendChild(o); }
+  const emoji = msg.includes('你赢了') ? '🎉' : '🤖';
+  o.innerHTML = `<div class="box"><h2>${emoji} ${msg}</h2><p>本局结束</p><button onclick="closeOverlay();newGame()">再来一局</button></div>`;
+}
+function closeOverlay() { const o = document.getElementById('overlay'); if (o) o.remove(); }
+
+load();
+</script>
+</body>
+</html>
