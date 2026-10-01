@@ -23,8 +23,8 @@
 
 | 游戏 | 状态 | 玩家数 | 模型 | 备注 |
 |------|------|--------|------|------|
-| **Splendor** | ✅ 已实现 | 2-4 | MLP / Attention | 首个完整实现，PPO 已收敛（vs 随机 98%） |
-| **情书（Love Letter）** | ✅ 已实现 | 2-4 | MLP | 隐藏信息 + 回合制 + 淘汰制，3 人 PPO vs 随机 77% |
+| **Splendor** | ✅ 已实现 | 2-4 | MLP / Attention | PPO 已收敛：vs 随机 2/3/4 人 97%/98%/96%，vs 开源 AlphaZero 打平 |
+| **情书（Love Letter）** | ✅ 已实现 | 2-4 | GRU | 隐藏信息 + 淘汰制；2/3/4 人直接对打均反超强贝叶斯 bot（55% vs 41% 等） |
 | 政变疑云（Coup） | 📋 计划 | 3-6 | — | 见 [docs/ADDING_A_GAME.md](./docs/ADDING_A_GAME.md) |
 
 ## 快速开始
@@ -78,7 +78,7 @@ python scripts/train_opponent_pool.py \
 ```bash
 # 单个模型 vs 随机 Agent
 python scripts/evaluate.py \
-    --model data/splendor/checkpoints/mlp_medium_3p_v1/latest.pth \
+    --model data/splendor/checkpoints/mlp_medium_3p_v1/checkpoint_iter_300.pth \
     --mode vs_random --games 100
 
 # 多个模型锦标赛

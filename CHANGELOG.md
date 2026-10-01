@@ -16,8 +16,10 @@
 
 ## 当前状态
 
-- 最佳可用模型：**PPO（结构化模型，mlp medium，3 人）**
-  - 检查点：`data/splendor/checkpoints/mlp_medium_3p_v1/latest.pth`
+- 最佳可用模型：**PPO（结构化模型，mlp medium）**，3 人 vs 2 随机 **98.5%**、vs 开源 AlphaZero 打平（49% vs 51%）。
+  - 检查点：`data/splendor/checkpoints/mlp_medium_3p_v1/checkpoint_iter_300.pth`
+  - ⚠️ 同目录的 `latest.pth` 曾被一次短跑覆盖成 iteration=1，勿再当最佳模型；加载前用 `core/checkpoints.load_model_state_dict(..., min_iteration=...)` 校验（见 bug #13）。
+- **2/4 人对局（本版新增）**：Splendor 2p/4p 均 96-97% vs 随机；情书 2p/4p 均直接对打反超强贝叶斯 bot（详见「训练结果与基准 → 2/4 人对局」）。
 - **情书（Love Letter）**：引擎已实现（隐藏信息 + 回合制 + 淘汰制）。3 人 vs 2 随机胜率：**强bot对手池模型 85.5%（最佳）**、强贝叶斯规则 bot 84.5%、弱规则 bot ~71%、随机 33%。关键结论：纯 PPO 对称自对弈学不动（价值函数 EV≈0，模型停在随机），**建立对手池（先弱 bot、再强 bot）后模型才能学会并逐级反超**——最终模型 vs 强贝叶斯 bot 直接对打 **55% vs 41%**，真正突破了手写规则的天花板。私密知识追踪（known 矩阵）+ GRU 序列编码 + 有序事件时间线均已实现。
 - AlphaZero 训练循环已搭好（价值函数可学），但策略网络在有限算力下尚未反超 PPO（见下）。
 - 目录结构已完成「游戏无关化 + 按游戏分组产物」重构，可直接接入新桌游。
@@ -33,6 +35,28 @@
 | 平均回合数 | ~87（自对弈）/ ~90（vs 随机） |
 | tier1 买卡占比 | ~61%（修复前 ~69%） |
 | 对随机 agent 胜率 | **98%**（100 局） |
+
+### 2/4 人对局（本版新增）
+
+基于与 3 人相同的 best practice 训练（情书：league 强bot对手池 + GRU；Splendor：对手池 + mlp medium + 固定 46 动作空间），统一用**直接计数**（`scripts/direct_head_to_head.py`，随机座位）评测。
+
+**Splendor vs 随机**
+
+| 人数 | 模型胜率 | 随机基线 |
+|---|---|---|
+| 2 人 | 97.0% | 50% |
+| 3 人 | 98.5% | 33% |
+| 4 人 | 96.5% | 25% |
+
+**情书（Love Letter）**
+
+| 人数 | vs 随机 | 强贝叶斯 bot 天花板 | vs 强 bot 直接对打 |
+|---|---|---|---|
+| 2 人 | 89.2% | 94.0% | 模型 53.7% vs bot 46.3% |
+| 3 人 | 83.0% | 84.5% | 模型 55% vs bot 41% |
+| 4 人 | 70.8% | 59.3% | 模型 35.3% vs 各 bot ~21% |
+
+结论：best practice 在 2/4 人同样成立；情书三个规模均「直接对打反超规则天花板」，4 人的相对优势最大（胜率是强 bot 的 ~1.7 倍）。
 
 ### 与开源模型对比
 
@@ -86,6 +110,7 @@
 | 10 | 开源 numba `make_move` 不接受 kwargs | 改位置参数 `board.make_move(a, current, 0)` | 桥接可运行 |
 | 11 | 开源 `DevelopmentCard` 断言 points ≤5 | 把总分分摊到多张 dummy 卡 | 桥接可运行 |
 | 12 | 开源 `NobleTile` 断言需求 ≥8 | 用 `(8,0,0,0,0)` 占位 | 桥接可运行 |
+| 13 | `latest.pth` 被短跑覆盖成 iteration=1，被误当最佳模型评测（Splendor 98% 曾因此被误读成 69%） | 新增 `core/checkpoints.load_model_state_dict(min_iteration=...)` 加载守卫 | 加载前校验训练迭代数，避免再被垃圾 `latest.pth` 坑到 |
 
 早期 MCTS 阶段的修复（Experience 参数名、Episode 构造、终局状态搜索等）见 [docs/BUGFIXES.md](./docs/BUGFIXES.md)。
 

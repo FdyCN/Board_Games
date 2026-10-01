@@ -43,9 +43,10 @@ sys.path.insert(0, str(project_root))
 from games.registry import create_game
 from models.model_factory import create_model
 from agents.neural_agent import NeuralAgent
+from core.checkpoints import load_model_state_dict
 
 
-def make_selector(spec, game, game_name, device):
+def make_selector(spec, game, game_name, device, min_iteration=None):
     """根据 spec 返回一个 select(game, state, player, legal_idx) -> action_idx 函数。"""
     if spec == "random":
         def sel(game, state, player, legal_idx):
@@ -72,8 +73,7 @@ def make_selector(spec, game, game_name, device):
             aux_dim=game.auxiliary_shape[0] if game.auxiliary_shape else None,
             encoder_params=game.encoder_params,
         )
-        ck = torch.load(ckpt, map_location=device, weights_only=False)
-        model.load_state_dict(ck["model_state_dict"])
+        model.load_state_dict(load_model_state_dict(ckpt, device=device, min_iteration=min_iteration))
         model.eval()
         agent = NeuralAgent(model, device=device, name=spec)
 
@@ -92,6 +92,8 @@ def main():
     ap.add_argument("--players", nargs="+", required=True, help="玩家 spec 列表（数量 = 玩家人数）")
     ap.add_argument("--games", type=int, default=300)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--min-iteration", type=int, default=None,
+                    help="neural checkpoint 的 metadata.iteration 下限；低于它则报错，防止加载被短跑覆盖的 latest.pth")
     args = ap.parse_args()
 
     n = len(args.players)
@@ -101,7 +103,7 @@ def main():
 
     game = create_game(args.game, num_players=n)
     device = torch.device("cpu")
-    selectors = [make_selector(spec, game, args.game, device) for spec in args.players]
+    selectors = [make_selector(spec, game, args.game, device, min_iteration=args.min_iteration) for spec in args.players]
     rng = random.Random(args.seed)
 
     wins = defaultdict(int)

@@ -162,17 +162,33 @@ class NeuralAgent(AgentInterface):
             path,
         )
 
-    def load(self, path: str) -> None:
+    def load(self, path: str, min_iteration: int | None = None) -> None:
         """
         加载模型权重
 
         Args:
             path: 加载路径（.pth 文件）
+            min_iteration: 期望的训练迭代数下限。传入后会在加载前校验
+                `metadata.iteration >= min_iteration`，防止把「被短跑覆盖的
+                latest.pth」（例如只跑了 1 个迭代）当成成品模型加载。
 
         Examples:
             >>> agent.load("data/checkpoints/agent_v1.pth")
+            >>> agent.load("data/checkpoints/agent_v1/latest.pth", min_iteration=500)
         """
-        checkpoint = torch.load(path, map_location=self.device)
+        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+        if min_iteration is not None:
+            meta = checkpoint.get("metadata") or {}
+            it = meta.get("iteration")
+            if it is None:
+                raise ValueError(
+                    f"checkpoint {path} 缺少 metadata.iteration，无法校验是否训练完成"
+                )
+            if it < min_iteration:
+                raise ValueError(
+                    f"checkpoint {path} 的 iteration={it} 低于期望下限 {min_iteration}，"
+                    "很可能是被短跑覆盖的 latest.pth；请改用 checkpoint_iter_*.pth"
+                )
         self.model.load_state_dict(checkpoint["model_state_dict"])
 
         # 如果保存了名称，则恢复
