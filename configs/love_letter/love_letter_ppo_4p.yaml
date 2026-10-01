@@ -1,0 +1,53 @@
+# 情书（Love Letter）PPO 训练配置（4 人对局）
+# 基于 best practice：GRU 序列编码 + 私密知识追踪 + 强bot对手池（train_league.py）
+
+game:
+  name: "love_letter"
+  num_players: 4
+  seed: null
+
+model:
+  encoder_type: "gru"     # 选项: "mlp", "attention", "gru"
+  config: "medium"        # 选项: "small", "medium", "large"
+
+algorithm:
+  name: "ppo"
+  learning_rate: 0.0001
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.1
+  value_clip_epsilon: 0.2
+  value_coef: 0.5
+  entropy_coef: 0.01
+  max_grad_norm: 0.5
+  use_value_clip: true
+  outcome_coef: 1.0
+
+  # 稠密奖励（键由本游戏定义）
+  dense_rewards:
+    round_win: 0.5            # 打牌直接赢下本轮
+    eliminate_opponent: 0.3   # 消灭一个对手（卫兵猜中/男爵/王子弃公主）
+    step_penalty: -0.01       # 每步小惩罚，鼓励尽快结束
+
+training:
+  num_iterations: 500
+  episodes_per_iteration: 128
+  update_epochs: 4
+  minibatch_size: 256
+  device: "cpu"
+  use_position_augmentation: false
+  num_workers: 2
+  checkpoint_dir: "data/love_letter/checkpoints/love_letter_4p_league_strong_v1"
+  checkpoint_interval: 50
+  log_interval: 1
+  verbose: true
+
+evaluation:
+  eval_interval: 50
+  eval_episodes: 100
+  deterministic: true
+
+experiment:
+  name: "love_letter_ppo_gru_4p_v1"
+  tags: ["love_letter", "ppo", "4p", "gru", "known", "sequence"]
+  notes: "情书 4 人：GRU 序列编码 + 私密知识追踪 + 强bot对手池（best practice）"
