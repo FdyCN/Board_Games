@@ -1,0 +1,53 @@
+# 政变疑云（Coup）PPO 对照实验：对手池【去掉强 bot】（只随机 + 冻结快照）
+# 用于验证「强 bot 对手池」对 Coup 是否像情书一样是决定性因素。
+
+game:
+  name: "coup"
+  num_players: 3
+  seed: null
+
+model:
+  encoder_type: "gru"
+  config: "medium"
+
+algorithm:
+  name: "ppo"
+  learning_rate: 0.0001
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.1
+  value_clip_epsilon: 0.2
+  value_coef: 0.5
+  entropy_coef: 0.01
+  max_grad_norm: 0.5
+  use_value_clip: true
+  outcome_coef: 1.0
+  dense_rewards:
+    win: 1.0
+    lose_influence: -0.4
+    challenge_success: 0.3
+    challenge_fail: -0.2
+    step_penalty: -0.01
+
+training:
+  num_iterations: 500
+  episodes_per_iteration: 128
+  update_epochs: 4
+  minibatch_size: 256
+  device: "cpu"
+  use_position_augmentation: false
+  num_workers: 2
+  checkpoint_dir: "data/coup/checkpoints/coup_3p_league_nostrong_v1"
+  checkpoint_interval: 50
+  log_interval: 1
+  verbose: true
+
+evaluation:
+  eval_interval: 50
+  eval_episodes: 100
+  deterministic: true
+
+experiment:
+  name: "coup_ppo_gru_3p_league_nostrong_v1"
+  tags: ["coup", "ppo", "3p", "gru", "league", "nostrong"]
+  notes: "对照实验：对手池去掉强 bot，验证强 bot 对手池的价值"

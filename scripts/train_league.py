@@ -136,6 +136,7 @@ def main():
     ap.add_argument("--snapshot-interval", type=int, default=20, help="每隔 N 迭代把当前模型加入池子")
     ap.add_argument("--pool-size", type=int, default=5, help="池子里最多保留多少个冻结快照")
     ap.add_argument("--checkpoint-interval", type=int, default=50)
+    ap.add_argument("--no-strong", action="store_true", help="对手池去掉强 bot（只随机+冻结快照），用于对照实验")
     args = ap.parse_args()
 
     c = Config.from_yaml(args.config)
@@ -177,8 +178,10 @@ def main():
         outcome_coef=c.algorithm.outcome_coef,
     )
 
-    # 对手池：随机 + 强规则 bot（84.5%） + （后续加入）冻结快照
-    pool: list[tuple[str, object | None]] = [("random", None), ("strong", None)]
+    # 对手池：随机 + 强规则 bot + （后续加入）冻结快照
+    pool: list[tuple[str, object | None]] = [("random", None)]
+    if not args.no_strong:
+        pool.append(("strong", None))
     rng = random.Random(c.game.seed)
 
     log_path = Path(args.log_file)
