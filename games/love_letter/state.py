@@ -40,6 +40,7 @@ class LoveLetterState:
     protected: list[bool]
     known: list[list[int | None]] = field(default_factory=list)  # known[p][q] = p 已知 q 的手牌值，None=未知
     events: list[tuple[int, int]] = field(default_factory=list)  # 本轮按出牌顺序的 (玩家, 牌值) 时间线
+    log: list[dict] = field(default_factory=list)  # 全对局富事件日志（供前端展示，跨轮持久）
     current_player: int = 0
     round_number: int = 1
     turn_number: int = 0
@@ -60,6 +61,7 @@ class LoveLetterState:
             protected=list(self.protected),
             known=[list(k) for k in self.known],
             events=list(self.events),
+            log=[dict(e) for e in self.log],
             current_player=self.current_player,
             round_number=self.round_number,
             turn_number=self.turn_number,

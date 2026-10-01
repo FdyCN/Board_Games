@@ -28,7 +28,7 @@
   .badge.elim { background:#e94560; }
   .badge.prot { background:#2ecc71; }
   .badge.turn { background:#f1c40f; color:#333; }
-  .events { background:var(--panel); border-radius:10px; padding:10px 14px; margin-bottom:12px; max-height:130px; overflow-y:auto; font-size:12px; color:var(--muted); line-height:1.7; }
+  .events { background:var(--panel); border-radius:10px; padding:10px 14px; margin-bottom:12px; max-height:180px; overflow-y:auto; font-size:13px; color:var(--muted); line-height:1.8; }
   .events b { color:var(--text); }
   .myarea { background:var(--panel); border-radius:10px; padding:14px; }
   .myarea .head { display:flex; justify-content:space-between; margin-bottom:10px; font-size:14px; }
@@ -108,6 +108,61 @@ function cardName(v) { return CARD_INFO[v] ? CARD_INFO[v].name : v; }
 function chipHtml(v) { return `<div class="chip" style="background:${cardColor(v)}">${cardName(v)}<small>${v}</small></div>`; }
 function targetName(rel) { return rel === 0 ? '自己' : (state ? `AI ${rel}` : rel); }
 
+function playerName(p) { return p === 0 ? '你' : `AI ${p}`; }
+
+function eventText(e) {
+  if (e.type === 'play') {
+    const who = playerName(e.player);
+    const card = CARD_INFO[e.card] ? CARD_INFO[e.card].name : e.card;
+    let s = `<b>${who}</b> 打出【${card}】`;
+    switch (e.card) {
+      case 1:
+        if (e.target != null) {
+          s += `，猜 <b>${playerName(e.target)}</b> 持有【${CARD_INFO[e.guess].name}】`;
+          s += e.eliminated.includes(e.target) ? ` → ✅ 猜中，${playerName(e.target)} 出局！` : ` → ❌ 猜错`;
+        } else s += `（空打，无目标）`;
+        break;
+      case 2:
+        if (e.target != null) s += `，偷看 <b>${playerName(e.target)}</b> 的手牌`;
+        else s += `（空打）`;
+        break;
+      case 3:
+        if (e.target != null) {
+          s += `，与 <b>${playerName(e.target)}</b> 比牌`;
+          if (e.eliminated.includes(e.player)) s += ` → ${who} 出局！`;
+          else if (e.eliminated.includes(e.target)) s += ` → ${playerName(e.target)} 出局！`;
+          else s += ` → 平局`;
+        }
+        break;
+      case 4:
+        s += `，获得免疫至下回合`;
+        break;
+      case 5:
+        if (e.target != null) {
+          s += `，指定 <b>${playerName(e.target)}</b> 弃牌重抽`;
+          if (e.eliminated.includes(e.target)) s += ` → 弃掉公主，${playerName(e.target)} 出局！`;
+        }
+        break;
+      case 6:
+        if (e.target != null) s += `，与 <b>${playerName(e.target)}</b> 交换手牌`;
+        break;
+      case 7:
+        break;
+      case 8:
+        s += ` → ${who} 出局！`;
+        break;
+    }
+    return s;
+  }
+  if (e.type === 'round_end') {
+    return `🏁 本轮结束，<b>${playerName(e.winner)}</b> 获胜`;
+  }
+  if (e.type === 'game_end') {
+    return `🏆 游戏结束，<b>${playerName(e.winner)}</b> 获胜！`;
+  }
+  return JSON.stringify(e);
+}
+
 function render() {
   if (!state) return;
   document.getElementById('round').textContent = state.round;
@@ -134,9 +189,10 @@ function render() {
       </div>`;
   }
 
-  // 事件日志
+  // 事件日志（完整结果：谁打了什么牌、对谁做了什么）
   const ev = document.getElementById('events');
-  ev.innerHTML = state.events.map(e => `<b>${e.player === 0 ? '你' : 'AI ' + e.player}</b> 打出 <b>${e.name}</b>`).join('<br>') || '<span style="color:#555">对局开始…</span>';
+  const logs = state.log || [];
+  ev.innerHTML = logs.map(eventText).join('<br>') || '<span style="color:#555">对局开始…</span>';
   ev.scrollTop = ev.scrollHeight;
 
   // 我的手牌

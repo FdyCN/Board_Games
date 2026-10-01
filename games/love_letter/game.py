@@ -191,6 +191,18 @@ class LoveLetterGame(GameInterface):
         if eliminated_opponents:
             dense_reward += self._rewards.get("eliminate_opponent", 0.0) * len(eliminated_opponents)
 
+        # 记录富事件日志（供前端展示完整结果：谁打了什么牌、对谁做了什么）
+        abs_target = (p + action.target) % n if action.target >= 0 else None
+        eliminated_all = [i for i in range(n) if not before_elim[i] and state.eliminated[i]]
+        state.log.append({
+            "type": "play",
+            "player": p,
+            "card": action.card,
+            "target": abs_target,
+            "guess": action.guess if action.card == GUARD else None,
+            "eliminated": eliminated_all,
+        })
+
         # 2. 判定本轮结果
         alive = state.alive_players()
         round_winner = -1
@@ -209,6 +221,8 @@ class LoveLetterGame(GameInterface):
             self._resolve_round_end(state, round_winner)
             if round_winner == p:
                 dense_reward += self._rewards.get("round_win", 0.0)
+            if round_winner >= 0:
+                state.log.append({"type": "round_end", "winner": round_winner, "tokens": list(state.tokens)})
 
         # 4. 回合上限保护
         state.turn_number += 1
@@ -216,6 +230,9 @@ class LoveLetterGame(GameInterface):
             state.game_over = True
             state.round_over = True
             state.winner = self._winner_by_tokens(state)
+
+        if state.game_over:
+            state.log.append({"type": "game_end", "winner": state.winner})
 
         rewards = [0.0] * n
         rewards[p] = dense_reward

@@ -143,10 +143,7 @@ class LoveLetterAdapter(GameAdapter):
             "target_tokens": state.target_tokens,
             "known": [state.known[me][q] for q in range(n)],
             "legal_actions": legal,
-            "events": [
-                {"player": p, "card": c, "name": self._CARD_NAMES.get(c, str(c))}
-                for p, c in state.events[-10:]
-            ],
+            "log": [dict(e) for e in state.log],
         }
 
     def parse_action(self, d):
