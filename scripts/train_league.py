@@ -35,8 +35,6 @@ sys.path.insert(0, str(project_root))
 
 from configs.config_loader import Config, build_game_kwargs
 from games.registry import create_game
-from games.love_letter.heuristic import heuristic_choose
-from games.love_letter.strong_bot import strong_choose
 from models.model_factory import create_model
 from agents.neural_agent import NeuralAgent
 from training.algorithms.ppo import PPO
@@ -44,8 +42,11 @@ from training.experience import ExperienceBatch, compute_advantages_for_episode
 from core.types import Experience, Episode
 
 
-def league_episode(game, seats, current_agent, gamma, gae_lambda, rng, device):
-    """打一局：seats[p] = (type, agent_or_None)；返回当前模型的 Experience 列表（已算优势）。"""
+def league_episode(game, seats, current_agent, gamma, gae_lambda, rng, device, bots):
+    """打一局：seats[p] = (type, agent_or_None)；返回当前模型的 Experience 列表（已算优势）。
+
+    bots: {"heuristic": choose(game,state,p)->action, "strong": ...}
+    """
     state = game.reset()
     n = game.num_players
     action_space = game.action_space_size
@@ -67,10 +68,10 @@ def league_episode(game, seats, current_agent, gamma, gae_lambda, rng, device):
             aux_targets = game.get_auxiliary_labels(state, p)
             pending = (p, obs, action_idx, info["log_prob"], info["value"], mask, aux_targets)
         elif spec_type == "heuristic":
-            action = heuristic_choose(game, state, p)
+            action = bots["heuristic"](game, state, p)
             action_idx = game.action_to_index(action, state)
         elif spec_type == "strong":
-            action = strong_choose(game, state, p)
+            action = bots["strong"](game, state, p)
             action_idx = game.action_to_index(action, state)
         elif spec_type == "random":
             action_idx = rng.choice(legal_idx)
@@ -143,6 +144,17 @@ def main():
     n = game.num_players
     device = torch.device(c.training.device)
 
+    # 按游戏导入规则 bot（league 对手池用）
+    if c.game.name == "love_letter":
+        from games.love_letter.heuristic import heuristic_choose
+        from games.love_letter.strong_bot import strong_choose
+    elif c.game.name == "coup":
+        from games.coup.heuristic import heuristic_choose
+        from games.coup.strong_bot import strong_choose
+    else:
+        raise ValueError(f"train_league 不支持游戏 {c.game.name}")
+    bots = {"heuristic": heuristic_choose, "strong": strong_choose}
+
     model = create_model(
         obs_dim=game.observation_shape[0],
         action_size=game.action_space_size,
@@ -194,7 +206,7 @@ def main():
         for _ in range(episodes_per_iter):
             seats = sample_seats(game, current_agent, pool, rng)
             exps = league_episode(game, seats, current_agent,
-                                  c.algorithm.gamma, c.algorithm.gae_lambda, rng, device)
+                                  c.algorithm.gamma, c.algorithm.gae_lambda, rng, device, bots)
             all_exps.extend(exps)
             ep_lens.append(len(exps))
 

@@ -54,10 +54,14 @@ def make_selector(spec, game, game_name, device, min_iteration=None):
         return sel
 
     if spec in ("heuristic", "strong"):
-        if game_name != "love_letter":
-            raise ValueError(f"spec '{spec}' 只适用于 love_letter，当前游戏: {game_name}")
-        from games.love_letter.heuristic import heuristic_choose
-        from games.love_letter.strong_bot import strong_choose
+        if game_name == "love_letter":
+            from games.love_letter.heuristic import heuristic_choose
+            from games.love_letter.strong_bot import strong_choose
+        elif game_name == "coup":
+            from games.coup.heuristic import heuristic_choose
+            from games.coup.strong_bot import strong_choose
+        else:
+            raise ValueError(f"spec '{spec}' 不支持游戏 {game_name}")
         chooser = heuristic_choose if spec == "heuristic" else strong_choose
 
         def sel(game, state, player, legal_idx):
@@ -88,7 +92,7 @@ def make_selector(spec, game, game_name, device, min_iteration=None):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--game", required=True, choices=["love_letter", "splendor"])
+    ap.add_argument("--game", required=True, choices=["love_letter", "splendor", "coup"])
     ap.add_argument("--players", nargs="+", required=True, help="玩家 spec 列表（数量 = 玩家人数）")
     ap.add_argument("--games", type=int, default=300)
     ap.add_argument("--seed", type=int, default=0)
