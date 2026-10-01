@@ -40,12 +40,13 @@
 git clone <repo_url>
 cd Board_Games
 
-python -m venv venv
-source venv/bin/activate      # Windows: venv\Scripts\activate
+conda env create -f environment.yml   # 首次创建（Python 3.12）
+conda activate boardgames             # 以后每次进入项目只需这一步
 
-pip install -r requirements.txt
 pip install -e .
 ```
+
+> 也可用传统 venv：`python -m venv venv && source venv/bin/activate`，然后 `pip install -r requirements.txt -e .`。
 
 ### 训练一个模型
 

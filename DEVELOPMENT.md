@@ -19,13 +19,11 @@
 git clone <repo_url>
 cd Board_Games
 
-# 2. 虚拟环境
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+# 2. conda 环境（Python 3.12，含 dev 依赖，可与其他项目共用）
+conda env create -f environment.yml
+conda activate boardgames             # 以后每次进入项目只需这一步
 
-# 3. 依赖
-pip install -r requirements.txt
-pip install -r requirements-dev.txt   # pytest, black, ruff 等
+# 3. 本项目本身
 pip install -e .
 ```
 

@@ -1,0 +1,23 @@
+# 可复现的 conda 环境定义（供本项目及同技术栈项目共用）。
+#
+# 用法（务必在项目根目录执行，pip 段的 -r 相对路径依赖 cwd）：
+#     conda env create -f environment.yml
+#     conda activate boardgames
+#     pip install -e .
+#
+# 说明：
+#   - Python 用 3.12（torch/numba 生态最稳）；旧 venv 是 3.14，但代码 3.10+ 兼容。
+#   - 依赖以 requirements.txt / requirements-dev.txt 为单一来源，另补 numba
+#     （third_party/alpha-zero-general 的开源基准需要）。
+#   - 用 defaults 频道（repo.anaconda.com 本机更快，需先 `conda tos accept`）；网络允许
+#     也可换 conda-forge（社区频道，无 ToS）。
+name: boardgames
+channels:
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - -r requirements.txt
+      - -r requirements-dev.txt
+      - numba
