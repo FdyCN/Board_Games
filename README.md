@@ -27,6 +27,8 @@
 | **情书（Love Letter）** | ✅ 已实现 | 2-4 | GRU | 隐藏信息 + 淘汰制；2/3/4 人直接对打均反超强贝叶斯 bot（55% vs 41% 等） |
 | 政变疑云（Coup） | 📋 计划 | 3-6 | — | 见 [docs/ADDING_A_GAME.md](./docs/ADDING_A_GAME.md) |
 
+> 预训练模型（最佳 checkpoint）发布在 GitHub Releases，下载与加载方式见 [docs/MODELS.md](./docs/MODELS.md)。
+
 ## 快速开始
 
 ### 环境要求

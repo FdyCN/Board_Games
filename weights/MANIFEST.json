@@ -1,0 +1,114 @@
+{
+  "models": [
+    {
+      "game": "splendor",
+      "players": 2,
+      "encoder": "mlp",
+      "config": "medium",
+      "source": "data/splendor/checkpoints/mlp_medium_2p_v1/checkpoint_iter_500.pth",
+      "name": "splendor_2p_mlp_medium_v1.pth",
+      "min_iteration": 450,
+      "benchmark": {
+        "vs_random": "97.0%",
+        "random_baseline": "50%"
+      },
+      "sha256": "d1b33a3e32c6aa8b258a3de75a6a8804851c7a7bc71cd372614f1cc5a34782e8",
+      "size_bytes": 3756231,
+      "obs_dim": 384,
+      "action_size": 46
+    },
+    {
+      "game": "splendor",
+      "players": 3,
+      "encoder": "mlp",
+      "config": "medium",
+      "source": "data/splendor/checkpoints/mlp_medium_3p_v1/checkpoint_iter_300.pth",
+      "name": "splendor_3p_mlp_medium_v1.pth",
+      "min_iteration": 300,
+      "benchmark": {
+        "vs_random": "98.5%",
+        "random_baseline": "33%",
+        "vs_open_source_alphazero": "49% vs 51% (打平)"
+      },
+      "sha256": "5052ff4376a14b7050ab08ec1e2ac8cde6d2ab2c9e25573d68263bfcda31fceb",
+      "size_bytes": 3756231,
+      "obs_dim": 384,
+      "action_size": 46
+    },
+    {
+      "game": "splendor",
+      "players": 4,
+      "encoder": "mlp",
+      "config": "medium",
+      "source": "data/splendor/checkpoints/mlp_medium_4p_v1/checkpoint_iter_500.pth",
+      "name": "splendor_4p_mlp_medium_v1.pth",
+      "min_iteration": 450,
+      "benchmark": {
+        "vs_random": "96.5%",
+        "random_baseline": "25%"
+      },
+      "sha256": "8f9f2bf8ecd684c92e6aa9f99b3b44f14ca5becc61a9139bde873d56ad0c35f4",
+      "size_bytes": 3756231,
+      "obs_dim": 384,
+      "action_size": 46
+    },
+    {
+      "game": "love_letter",
+      "players": 2,
+      "encoder": "gru",
+      "config": "medium",
+      "source": "data/love_letter/checkpoints/love_letter_2p_league_strong_v1/checkpoint_iter_500.pth",
+      "name": "love_letter_2p_gru_v1.pth",
+      "min_iteration": 450,
+      "benchmark": {
+        "vs_random": "89.2%",
+        "random_baseline": "50%",
+        "vs_strong_bot": "53.7% vs 46.3%",
+        "strong_bot_vs_random": "94.0%"
+      },
+      "sha256": "193495a0e490a2c86f55d70ec9f7a80de591617aaa91f1fccd7456bc6039fd49",
+      "size_bytes": 11343607,
+      "obs_dim": 275,
+      "action_size": 19
+    },
+    {
+      "game": "love_letter",
+      "players": 3,
+      "encoder": "gru",
+      "config": "medium",
+      "source": "data/love_letter/checkpoints/love_letter_3p_league_strong_v1/checkpoint_iter_500.pth",
+      "name": "love_letter_3p_gru_v1.pth",
+      "min_iteration": 450,
+      "benchmark": {
+        "vs_random": "83.0%",
+        "random_baseline": "33%",
+        "vs_strong_bot": "55% vs 41%",
+        "strong_bot_vs_random": "84.5%"
+      },
+      "sha256": "e58e07d4049fa83f7cce7f0f0a1711e12e130d4f5b2489ccfdd72f611c49b933",
+      "size_bytes": 11397751,
+      "obs_dim": 304,
+      "action_size": 30
+    },
+    {
+      "game": "love_letter",
+      "players": 4,
+      "encoder": "gru",
+      "config": "medium",
+      "source": "data/love_letter/checkpoints/love_letter_4p_league_strong_v1/checkpoint_iter_500.pth",
+      "name": "love_letter_4p_gru_v1.pth",
+      "min_iteration": 450,
+      "benchmark": {
+        "vs_random": "70.8%",
+        "random_baseline": "25%",
+        "vs_strong_bot": "35.3% vs ~21% (各 bot)",
+        "strong_bot_vs_random": "59.3%"
+      },
+      "sha256": "1b9462bb62ccb7152fae920beefee5bb4eba88fcfc300230935ad4e58530927a",
+      "size_bytes": 11451511,
+      "obs_dim": 333,
+      "action_size": 41
+    }
+  ],
+  "generated_by": "scripts/export_models.py"
+}
