@@ -1,0 +1,48 @@
+# 政变疑云（Coup）NFSP 训练配置（3 人对局）
+# NFSP = 神经虚拟自对弈，专为非完全信息说谎游戏设计（逼近纳什均衡）。
+# 用作「对比基线」：判断 league 模型的好坏，不再只相对手写 bot。
+
+game:
+  name: "coup"
+  num_players: 3
+  seed: null
+
+model:
+  encoder_type: "gru"
+  config: "medium"
+
+algorithm:
+  name: "ppo"
+  learning_rate: 0.0001
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.1
+  value_clip_epsilon: 0.2
+  value_coef: 0.5
+  entropy_coef: 0.01
+  max_grad_norm: 0.5
+  use_value_clip: true
+  outcome_coef: 1.0
+
+training:
+  num_iterations: 200
+  episodes_per_iteration: 128
+  update_epochs: 4
+  minibatch_size: 256
+  device: "cpu"
+  use_position_augmentation: false
+  num_workers: 2
+  checkpoint_dir: "data/coup/checkpoints/coup_3p_nfsp_belief_v1"
+  checkpoint_interval: 50
+  log_interval: 1
+  verbose: true
+
+evaluation:
+  eval_interval: 20
+  eval_episodes: 100
+  deterministic: true
+
+experiment:
+  name: "coup_nfsp_gru_3p_belief_v1"
+  tags: ["coup", "nfsp", "3p", "gru"]
+  notes: "Coup 3 人 NFSP 对比基线（逼近纳什均衡的 principled 算法）"
