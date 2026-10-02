@@ -400,9 +400,15 @@ class CoupGame(GameInterface):
         drawn = []
         while len(drawn) < 2 and state.deck:
             drawn.append(state.deck.pop())
-        hand4 = hand + drawn
-        while len(hand4) < 4:
-            hand4.append(-1)  # 占位（牌堆不足）
+        real = hand + drawn
+        if len(real) < 2:
+            # 手牌不足 2 张且牌堆抽不够 → 换牌退化为无操作（保留现有牌）
+            state.hands[p] = real
+            self._record_event(state, p, EV_EXCHANGE)
+            state.log.append({"type": "exchange", "player": p})
+            self._end_turn(state)
+            return
+        hand4 = real + [-1] * (4 - len(real))  # 占位（牌堆不足）
         state.exchange_hand = hand4
         state.phase = PHASE_EXCHANGE
         state.current_player = p
