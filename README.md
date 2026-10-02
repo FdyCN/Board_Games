@@ -1,6 +1,6 @@
 # Board Games AI Training Framework
 
-一个通用的、可扩展的桌游自对弈强化学习训练框架。支持多智能体自对弈、PPO / AlphaZero（MCTS）、ELO 评估，并按游戏组织训练产物（模型、日志、报告）。
+一个通用的、可扩展的桌游自对弈强化学习训练框架。支持多智能体自对弈、PPO / NFSP / league 对手池 / AlphaZero（MCTS）、ELO 评估，并按游戏组织训练产物（模型、日志、报告）。当前已实现三款游戏：Splendor（璀璨宝石）、Love Letter（情书）、Coup（政变疑云）。
 
 > **文档导航**
 > - 本文档：**使用指南**（安装、训练、评估、接入新游戏）
@@ -12,10 +12,10 @@
 ## 特性
 
 - **游戏无关**：基于 `GameInterface` 抽象接口，训练/评估脚本从配置读取游戏名，接入新游戏零脚本改动
-- **多智能体自对弈**：支持 2-4 人对称自对弈，多进程并行数据收集
-- **两种训练范式**：PPO（GAE + clipped surrogate，稠密奖励）与 AlphaZero（MCTS + 策略 CE + 终局价值 MSE）
+- **多智能体自对弈**：支持 2-6 人对局，多进程并行数据收集
+- **多种训练范式**：PPO（GAE + clipped surrogate）、NFSP（神经虚拟自对弈）、league 对手池、AlphaZero（MCTS）
 - **固定动作空间**：动作映射到语义稳定的固定槽位，策略网络学到的偏好不会因状态变化而漂移
-- **轻量模型**：MLP / Attention 编码器 + 结构化策略头，参数量 100K-1M，适合本地 CPU 训练
+- **轻量模型**：MLP / Attention / GRU 编码器（含显式信念状态）+ 结构化策略头，参数量 100K-1M，适合本地 CPU 训练
 - **完整评估体系**：Arena 竞技场、ELO 评分、胜率/位置偏差统计
 - **按游戏组织的产物**：`data/<game>/checkpoints|logs|reports`，每个游戏独立存放
 
@@ -23,11 +23,11 @@
 
 | 游戏 | 状态 | 玩家数 | 模型 | 备注 |
 |------|------|--------|------|------|
-| **Splendor** | ✅ 已实现 | 2-4 | MLP / Attention | PPO 已收敛：vs 随机 2/3/4 人 97%/98%/96%，vs 开源 AlphaZero 打平 |
+| **Splendor** | ✅ 已实现 | 2-4 | MLP / Attention | 完全信息策略游戏；vs 随机 2/3/4 人 97%/98%/96%，vs 开源 AlphaZero 打平 |
 | **情书（Love Letter）** | ✅ 已实现 | 2-4 | GRU | 隐藏信息 + 淘汰制；2/3/4 人直接对打均反超强贝叶斯 bot（55% vs 41% 等） |
-| 政变疑云（Coup） | 📋 计划 | 3-6 | — | 见 [docs/ADDING_A_GAME.md](./docs/ADDING_A_GAME.md) |
+| **政变疑云（Coup）** | ✅ 已实现 | 2-6 | GRU | 隐藏身份 + 说谎；多阶段 step + 显式信念编码；vs 随机 2/3/4 人 84.5%/77.5%/73.2%，均反超强 bot（详见 [docs/coup_results.md](./docs/coup_results.md)） |
 
-> 预训练模型（最佳 checkpoint）发布在 GitHub Releases，下载与加载方式见 [docs/MODELS.md](./docs/MODELS.md)。
+> 预训练模型（最佳 checkpoint，共 9 个）用 Git LFS 随仓库分发在 `weights/` 目录，下载与加载方式见 [docs/MODELS.md](./docs/MODELS.md)。
 
 ## 快速开始
 
@@ -144,7 +144,9 @@ data/
 Board_Games/
 ├── core/                   # 抽象接口（GameInterface/AgentInterface）+ 路径辅助
 ├── games/                  # 游戏实现（每个游戏一个子目录）
-│   └── splendor/           #   Splendor 引擎（game/state/actions/encoder/RULES）
+│   ├── splendor/           #   Splendor 引擎（game/state/actions/encoder/RULES）
+│   ├── love_letter/        #   情书引擎（隐藏信息 + 私密知识追踪）
+│   └── coup/               #   政变疑云引擎（隐藏身份 + 多阶段 step）
 ├── agents/                 # Agent（随机、神经网络）
 ├── models/                 # 神经网络（编码器、策略/价值/胜负头、模型工厂）
 ├── training/               # 训练框架（PPO、自对弈 worker、MCTS、经验缓冲）
@@ -178,7 +180,7 @@ Board_Games/
 ## 技术栈
 
 - **深度学习**：PyTorch 2.x
-- **强化学习**：PPO（GAE + clipped surrogate）、AlphaZero（MCTS）
+- **强化学习**：PPO（GAE + clipped surrogate）、NFSP（神经虚拟自对弈）、league 对手池、AlphaZero（MCTS）
 - **并行**：torch.multiprocessing
 - **可视化**：TensorBoard
 - **配置**：YAML
