@@ -50,6 +50,7 @@ class CoupEncoder:
         self.phase_dim = NUM_PHASES            # 6
         self.opp_dim = 3 * (n - 1)             # 金币/存活/弃牌数
         self.revealed_dim = NUM_ROLES          # 5
+        self.belief_dim = NUM_ROLES * (n - 1)  # 每对手 × 持有各角色概率（显式信念）
         self.cur_player_dim = n
         self.pending_kind_dim = NUM_ACTION_TYPES  # 7
         self.pending_target_dim = n
@@ -57,7 +58,7 @@ class CoupEncoder:
 
         self.static_dim = (
             self.hand_dim + self.coin_dim + self.deck_dim + self.phase_dim
-            + self.opp_dim + self.revealed_dim + self.cur_player_dim
+            + self.opp_dim + self.revealed_dim + self.belief_dim + self.cur_player_dim
             + self.pending_kind_dim + self.pending_target_dim + self.pending_role_dim
         )
         self.observation_dim = self.static_dim + self.seq_len * self.evt_dim
@@ -112,6 +113,23 @@ class CoupEncoder:
         for role in range(NUM_ROLES):
             obs[idx] = min(seen[role], 3) / 3.0
             idx += 1
+
+        # 6.5 显式信念状态：每个相对对手持有各角色的概率（算牌先验）
+        #     remaining[x] = 我还没看到的角色 x 张数；P(对手 q 持有 x) = 1 - (1 - 密度)^手牌数
+        seen_belief = list(seen)
+        for v in state.hands[player_id]:
+            seen_belief[v] += 1
+        remaining = [max(0, 3 - seen_belief[role]) for role in range(NUM_ROLES)]
+        total = sum(remaining)
+        for r in range(1, n):
+            q = (player_id + r) % n
+            k = len(state.hands[q]) if state.alive[q] else 0
+            for x in range(NUM_ROLES):
+                if total > 0 and k > 0:
+                    obs[idx] = 1.0 - (1.0 - remaining[x] / total) ** k
+                else:
+                    obs[idx] = 0.0
+                idx += 1
 
         # 7. 当前玩家（绝对 one-hot，对齐时间线）
         if 0 <= state.current_player < n:

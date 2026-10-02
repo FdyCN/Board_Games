@@ -57,7 +57,7 @@ def test_reset_basics():
 
 
 def test_action_space_and_observation():
-    for n, obs_dim in [(2, 1066), (3, 1135), (4, 1204)]:
+    for n, obs_dim in [(2, 1071), (3, 1145), (4, 1219)]:
         g = _game(n)
         assert g.action_space_size == 3 * n + 16
         st = g.reset()

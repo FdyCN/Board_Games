@@ -220,7 +220,8 @@ def main():
     ap.add_argument("--iterations", type=int, default=1000)
     ap.add_argument("--episodes", type=int, default=None)
     ap.add_argument("--log-file", required=True)
-    ap.add_argument("--eta", type=float, default=0.1, help="最佳响应动作概率")
+    ap.add_argument("--eta-start", type=float, default=0.3, help="最佳响应动作概率（起始，线性衰减）")
+    ap.add_argument("--eta-end", type=float, default=0.05, help="最佳响应动作概率（终止）")
     ap.add_argument("--epsilon", type=float, default=0.06, help="BR 的 ε-greedy 探索")
     ap.add_argument("--lr", type=float, default=0.001)
     ap.add_argument("--gamma", type=float, default=0.99)
@@ -270,7 +271,8 @@ def main():
         "type": "header", "config": args.config, "game": c.game.name,
         "num_players": n, "iterations": args.iterations,
         "episodes_per_iteration": episodes_per_iter,
-        "eta": args.eta, "epsilon": args.epsilon, "lr": args.lr, "gamma": args.gamma,
+        "eta_start": args.eta_start, "eta_end": args.eta_end,
+        "epsilon": args.epsilon, "lr": args.lr, "gamma": args.gamma,
     }) + "\n")
     f.flush()
 
@@ -286,11 +288,14 @@ def main():
     for it in range(1, args.iterations + 1):
         t0 = time.time()
 
+        # η 线性衰减：早期多最佳响应（探索），后期多平均策略（收敛到均衡）
+        eta = args.eta_start + (args.eta_end - args.eta_start) * ((it - 1) / max(1, args.iterations - 1))
+
         # 1. 自对弈收集
         ep_lens = []
         for _ in range(episodes_per_iter):
             ep_lens.append(self_play_episode(
-                game, q_net, pi_net, replay, sl, args.eta, args.epsilon, device))
+                game, q_net, pi_net, replay, sl, eta, args.epsilon, device))
 
         # 2. 训练 Q（最佳响应）与 π（平均策略）
         q_loss = float(np.mean([train_q(q_net, q_target, q_opt, replay,
