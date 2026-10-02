@@ -52,6 +52,8 @@ def load_model_state_dict(
         meta = ck.get("metadata") or {}
         it = meta.get("iteration")
         if it is None:
+            it = ck.get("iteration")  # NFSP 等把 iteration 存顶层
+        if it is None:
             raise ValueError(
                 f"checkpoint {path} 缺少 metadata.iteration，无法校验是否训练完成；"
                 "若确认无误，可显式传入 min_iteration=None 跳过校验"
