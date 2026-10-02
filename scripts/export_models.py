@@ -75,6 +75,27 @@ MODELS = [
         "benchmark": {"vs_random": "70.8%", "random_baseline": "25%",
                       "vs_strong_bot": "35.3% vs ~21% (各 bot)", "strong_bot_vs_random": "59.3%"},
     },
+    {
+        "game": "coup", "players": 2, "encoder": "gru", "config": "medium",
+        "source": "data/coup/checkpoints/coup_2p_league_nostrong_belief_v1/checkpoint_iter_500.pth",
+        "name": "coup_2p_gru_v1.pth", "min_iteration": 450,
+        "benchmark": {"vs_random": "84.5%", "random_baseline": "50%",
+                      "vs_strong_bot": "63.5% vs 36.5%", "strong_bot_vs_random": "80.3%"},
+    },
+    {
+        "game": "coup", "players": 3, "encoder": "gru", "config": "medium",
+        "source": "data/coup/checkpoints/coup_3p_league_nostrong_belief_v1/checkpoint_iter_500.pth",
+        "name": "coup_3p_gru_v1.pth", "min_iteration": 450,
+        "benchmark": {"vs_random": "77.5%", "random_baseline": "33%",
+                      "vs_strong_bot": "36% vs ~32%", "strong_bot_vs_random": "69.2%"},
+    },
+    {
+        "game": "coup", "players": 4, "encoder": "gru", "config": "medium",
+        "source": "data/coup/checkpoints/coup_4p_league_nostrong_belief_v1/checkpoint_iter_500.pth",
+        "name": "coup_4p_gru_v1.pth", "min_iteration": 450,
+        "benchmark": {"vs_random": "73.2%", "random_baseline": "25%",
+                      "vs_strong_bot": "48.0% vs ~17% (各 bot)", "strong_bot_vs_random": "59.7%"},
+    },
 ]
 
 

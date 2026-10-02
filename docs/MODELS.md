@@ -4,7 +4,7 @@
 
 > 需要本地装 `git-lfs`（`brew install git-lfs && git lfs install`），否则 clone 下来的 `.pth` 是指针文件而非真模型。
 
-## 模型清单（6 个，共约 43MB）
+## 模型清单（9 个，共约 76MB）
 
 | 游戏 | 人数 | 文件 | 编码器 | 胜率（直接计数） |
 |---|---|---|---|---|
@@ -14,8 +14,11 @@
 | 情书 | 2 | `weights/love_letter_2p_gru_v1.pth` | gru medium | vs 随机 89.2%，vs 强 bot 53.7% |
 | 情书 | 3 | `weights/love_letter_3p_gru_v1.pth` | gru medium | vs 随机 83.0%，vs 强 bot 55% |
 | 情书 | 4 | `weights/love_letter_4p_gru_v1.pth` | gru medium | vs 随机 70.8%，vs 强 bot 35.3% |
+| 政变疑云 | 2 | `weights/coup_2p_gru_v1.pth` | gru medium | vs 随机 84.5%，vs 强 bot 63.5% |
+| 政变疑云 | 3 | `weights/coup_3p_gru_v1.pth` | gru medium | vs 随机 77.5%，vs 强 bot 36% |
+| 政变疑云 | 4 | `weights/coup_4p_gru_v1.pth` | gru medium | vs 随机 73.2%，vs 强 bot 48% |
 
-> 胜率口径：`scripts/direct_head_to_head.py` 直接计数（随机座位）。情书「vs 强 bot」是模型与强贝叶斯规则 bot 同场对打，>50% 表示突破了规则天花板。完整 sha256 见 `weights/MANIFEST.json`。
+> 胜率口径：`scripts/direct_head_to_head.py` 直接计数（随机座位）。「vs 强 bot」是模型与手写强贝叶斯规则 bot 同场对打。完整 sha256 见 `weights/MANIFEST.json`。
 
 ## 获取模型
 
@@ -78,6 +81,28 @@ model.eval()
 ```
 
 > 情书的 `obs_dim`/`action_size` 随人数变化（2p=275/19，3p=304/30，4p=333/41），务必用对应人数的模型与 `num_players`。
+
+### 政变疑云（gru medium + 显式信念编码）
+
+```python
+from games.registry import create_game
+from models.model_factory import create_model
+from core.checkpoints import load_model_state_dict
+
+game = create_game("coup", num_players=3)   # 2/3/4 按需改
+model = create_model(
+    obs_dim=game.observation_shape[0],
+    action_size=game.action_space_size,
+    encoder_type="gru",
+    config="medium",
+    aux_dim=game.auxiliary_shape[0],
+    encoder_params=game.encoder_params,
+)
+model.load_state_dict(load_model_state_dict("weights/coup_3p_gru_v1.pth", min_iteration=450))
+model.eval()
+```
+
+> 政变疑云的 `obs_dim`/`action_size` 随人数变化（2p=1071/22，3p=1145/25，4p=1219/28）。编码器含显式信念状态（每对手持有各角色的概率）。
 
 完整「加载 + 对战」示例见 `scripts/direct_head_to_head.py`（`neural:<ckpt>:<enc>` spec）。
 
