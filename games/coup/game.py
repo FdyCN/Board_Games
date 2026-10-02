@@ -300,7 +300,7 @@ class CoupGame(GameInterface):
         hand4 = state.exchange_hand
         keep = action.keep
         kept = [hand4[i] for i in keep]
-        returned = [hand4[i] for i in range(len(hand4)) if i not in keep]
+        returned = [hand4[i] for i in range(len(hand4)) if i not in keep and hand4[i] >= 0]
         state.hands[p] = kept
         state.deck = returned + state.deck
         self._rng.shuffle(state.deck)
@@ -399,7 +399,9 @@ class CoupGame(GameInterface):
         hand = list(state.hands[p])
         drawn = []
         while len(drawn) < 2 and state.deck:
-            drawn.append(state.deck.pop())
+            card = state.deck.pop()
+            if card >= 0:  # 防御：跳过可能的 -1 占位牌
+                drawn.append(card)
         real = hand + drawn
         if len(real) < 2:
             # 手牌不足 2 张且牌堆抽不够 → 换牌退化为无操作（保留现有牌）
@@ -459,16 +461,26 @@ class CoupGame(GameInterface):
         p = state.current_player
         phase = state.phase
         if phase == PHASE_ACTION:
-            return self._legal_actions_action(state, p)
-        if phase in (PHASE_CHALLENGE, PHASE_BLOCK_CHALLENGE):
-            return [CoupAction("pass"), CoupAction("challenge")]
-        if phase == PHASE_BLOCK:
-            return self._legal_actions_block(state)
-        if phase == PHASE_REVEAL:
-            return [CoupAction("reveal", reveal_slot=i) for i in range(len(state.hands[p]))]
-        if phase == PHASE_EXCHANGE:
-            return self._legal_actions_exchange(state)
-        return []
+            legal = self._legal_actions_action(state, p)
+        elif phase in (PHASE_CHALLENGE, PHASE_BLOCK_CHALLENGE):
+            legal = [CoupAction("pass"), CoupAction("challenge")]
+        elif phase == PHASE_BLOCK:
+            legal = self._legal_actions_block(state)
+        elif phase == PHASE_REVEAL:
+            legal = [CoupAction("reveal", reveal_slot=i) for i in range(len(state.hands[p]))]
+        elif phase == PHASE_EXCHANGE:
+            legal = self._legal_actions_exchange(state)
+        else:
+            legal = []
+        if not legal:
+            raise RuntimeError(
+                f"非终局无合法动作: phase={phase} cur={p} turn={state.turn_player} "
+                f"hands={state.hands} coins={state.coins} alive={state.alive} "
+                f"pending={state.pending_kind}/{state.pending_target} "
+                f"exchange_hand={state.exchange_hand} deck={len(state.deck)} "
+                f"reveal_resume={state.reveal_resume}"
+            )
+        return legal
 
     def _legal_actions_action(self, state: CoupState, p: int) -> list[CoupAction]:
         n = state.num_players

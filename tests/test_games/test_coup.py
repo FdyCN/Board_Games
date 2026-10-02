@@ -229,8 +229,9 @@ def test_exchange_keeps_two_cards():
     g.step(CoupAction("exchange_keep", keep=(0, 2)))
     assert len(g._state.hands[0]) == 2
     assert AMBASSADOR in g._state.hands[0]
-    # 牌堆：抽走 2 张后又归还 2 张 → 数量不变
+    # 牌堆：抽走 2 张后又归还 2 张 → 数量不变，且无 -1 占位牌污染
     assert len(g._state.deck) == deck_before
+    assert all(c >= 0 for c in g._state.deck)
 
 
 # ===== 淘汰 / 终局 / 辅助 =====
