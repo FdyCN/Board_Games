@@ -59,6 +59,7 @@ scripts/backup
 data/*/checkpoints/*
 data/*/logs/*
 data/*/reports/*
+data/*/transcripts/*
 data/games/*
 
 # 保留目录结构但忽略内容

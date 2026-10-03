@@ -47,6 +47,11 @@ def reports_dir(game_name: str) -> Path:
     return game_dir(game_name) / "reports"
 
 
+def transcripts_dir(game_name: str) -> Path:
+    """data/<game_name>/transcripts/（人机/人人对局记录）"""
+    return game_dir(game_name) / "transcripts"
+
+
 def run_checkpoint_dir(game_name: str, run_name: str) -> Path:
     """data/<game_name>/checkpoints/<run_name>/"""
     return checkpoints_dir(game_name) / run_name
